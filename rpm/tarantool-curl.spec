@@ -34,5 +34,5 @@ make %{?_smp_mflags}
 %license LICENSE AUTHORS
 
 %changelog
-* Wed Aug 31 2016 Andrey Drozdov <roman@tarantool.org> 1.0.0-1
+* Wed Aug 31 2016 Andrey Drozdov <andrey@tarantool.org> 1.0.0-1
 - Initial version of the RPM spec
