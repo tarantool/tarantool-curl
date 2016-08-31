@@ -1,5 +1,5 @@
 add_library(driver SHARED driver.c)
 target_link_libraries(driver -lcurl -rdynamic)
 set_target_properties(driver PROPERTIES PREFIX "" OUTPUT_NAME "driver")
-install(TARGETS driver LIBRARY DESTINATION ${TARANTOOL_INSTALL_LIBDIR}/mqtt)
-install(FILES init.lua DESTINATION ${TARANTOOL_INSTALL_LUADIR}/mqtt)
+install(TARGETS driver LIBRARY DESTINATION ${TARANTOOL_INSTALL_LIBDIR}/curl)
+install(FILES init.lua DESTINATION ${TARANTOOL_INSTALL_LUADIR}/curl)
