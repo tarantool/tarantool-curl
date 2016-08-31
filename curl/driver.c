@@ -33,9 +33,22 @@
 #include <lualib.h>
 #include <lauxlib.h>
 #include <stdarg.h>
+#include <sys/epoll.h>
+#include <unistd.h>
 
 #include "driver.h"
 
+
+struct easy_ctx
+{
+	lua_State *L;
+	int read_fn;
+	int write_fn;
+	int done_fn;
+	int fn_ctx;
+
+	struct curl_slist *headers;
+};
 
 static
 void
@@ -44,191 +57,208 @@ check_multi_info(curl_t *ctx)
     CURLMsg *msg;
     int msgs_left;
 
-    fprintf(stderr, "REMAINING: %d\n", ctx->still_running);
 
     while ((msg = curl_multi_info_read(ctx->multi, &msgs_left))) {
         if (msg->msg == CURLMSG_DONE) {
             CURL *easy = msg->easy_handle;
             CURLcode res = msg->data.result;
-            fprintf(stderr, "DONE: => (%d)\n", res);
             curl_multi_remove_handle(ctx->multi, easy);
+	    struct easy_ctx *easy_ctx;
+	    curl_easy_getinfo(easy, CURLINFO_PRIVATE, &easy_ctx);
+	    if (easy_ctx->done_fn != LUA_REFNIL) {
+		lua_rawgeti(easy_ctx->L, LUA_REGISTRYINDEX,
+			    easy_ctx->done_fn);
+		lua_pushinteger(easy_ctx->L, msg->data.result);
+		lua_rawgeti(easy_ctx->L, LUA_REGISTRYINDEX,
+			    easy_ctx->fn_ctx);
+		lua_pcall(easy_ctx->L, 2, 0 ,0);
+	    }
+	    luaL_unref(easy_ctx->L, LUA_REGISTRYINDEX, easy_ctx->read_fn);
+	    luaL_unref(easy_ctx->L, LUA_REGISTRYINDEX, easy_ctx->write_fn);
+	    luaL_unref(easy_ctx->L, LUA_REGISTRYINDEX, easy_ctx->done_fn);
+	    luaL_unref(easy_ctx->L, LUA_REGISTRYINDEX, easy_ctx->fn_ctx);
+	    if (easy_ctx->headers)
+		    curl_slist_free_all(easy_ctx->headers);
+
             curl_easy_cleanup(easy);
         }
     }
 }
 
 
-static
-void
+static int
 io_f(va_list ap)
 {
-    curl_t *ctx = va_arg(ap, curl_t *);
+	curl_t *ctx = va_arg(ap, curl_t *);
 
-    fiber_set_cancellable(true);
+	fiber_set_cancellable(true);
+	struct epoll_event events[10];
 
-    do {
-        for (event_t event; pop_event(ctx, &event);) {
+	do {
+		int rc = epoll_wait(ctx->epollfd, events, 10, 0);
+		for (int i = 0; i < rc; ++i) {
+			int mask = events[i].events & EPOLLIN ?
+					CURL_POLL_IN : 0 |
+				   events[i].events & EPOLLOUT ?
+					CURL_POLL_OUT : 0;
+			curl_multi_socket_action(ctx->multi,
+						 events[i].data.fd,
+						 mask,
+						 &ctx->still_running);
+		}
+		if (rc <= 0) {
+			fiber_sleep(0.01);
+		}
+                curl_multi_socket_action(ctx->multi, CURL_SOCKET_TIMEOUT,
+					 0, &ctx->still_running);
 
-            int sfd = event.sfd;
+	        check_multi_info(ctx);
 
-            switch (event.type) {
-            case CURL_POLL_IN:
-                coio_wait(sfd, COIO_READ, 0.05);
-                curl_multi_socket_action(ctx->multi, sfd,
-                                         CURL_POLL_IN, &ctx->still_running);
-                break;
-            case CURL_POLL_OUT:
-                coio_wait(sfd, COIO_WRITE, 0.05);
-                curl_multi_socket_action(ctx->multi, sfd,
-                                         CURL_POLL_OUT, &ctx->still_running);
-                break;
-            case CURL_POLL_INOUT:
-                coio_wait(sfd, COIO_READ|COIO_WRITE, 0.05);
-                curl_multi_socket_action(ctx->multi, sfd,
-                                         CURL_POLL_INOUT, &ctx->still_running);
-                break;
-            case CURL_POLL_REMOVE:
-            default:
-                break;
-            }
-        } // for events
-
-        fiber_yield();
-
-    } while (ctx->need_work);
-}
-
-
-static
-void
-work_f(va_list ap)
-{
-    curl_t *ctx = va_arg(ap, curl_t *);
-
-//    CURLMcode rc;
-
-    fiber_set_cancellable(true);
-
-    while (ctx->need_work) {
-
-        curl_multi_socket_action(ctx->multi, CURL_SOCKET_TIMEOUT,
-                                 0, &ctx->still_running);
-
-        check_multi_info(ctx);
-
-        fiber_sleep(0.01);
-    }
-}
-
-static
-int
-prog_cb(void *p,
-        double dltotal,
-        double dlnow,
-        double ult,
-        double uln)
-{
-    (void)p;
-    (void)ult;
-    (void)uln;
-    (void)dlnow;
-    (void)dltotal;
-    fprintf(stderr, "Progress: (%g/%g)\n", dlnow, dltotal);
+	} while (ctx->need_work);
     return 0;
 }
 
 
-static
-size_t
-write_cb(void *ptr, size_t size, size_t nmemb, void *data)
+static size_t
+read_cb(void *ptr, size_t size, size_t nmemb, struct easy_ctx *easy_ctx)
 {
-  size_t realsize = size * nmemb;
-  (void)data;
-  (void)ptr;
-  return realsize;
+	if (!easy_ctx->read_fn)
+		return 0;
+	lua_rawgeti(easy_ctx->L, LUA_REGISTRYINDEX, easy_ctx->read_fn);
+	lua_pushnumber(easy_ctx->L, size * nmemb);
+	lua_rawgeti(easy_ctx->L, LUA_REGISTRYINDEX, easy_ctx->fn_ctx);
+	lua_pcall(easy_ctx->L, 2, 1, 0);
+	size_t readen;
+	const char *data = lua_tolstring(easy_ctx->L,
+				         lua_gettop(easy_ctx->L),
+					 &readen);
+	memcpy(ptr, data, readen);
+	lua_pop(easy_ctx->L, 1);
+	return readen;
 }
 
-
-static
-bool
-set_headers(curl_t *ctx, CURL *easy, lua_State *L)
+static size_t
+write_cb(void *ptr, size_t size, size_t nmemb, struct easy_ctx *easy_ctx)
 {
-    (void)ctx;
-    (void)easy;
-
-    if (!lua_istable(L, 3)) {
-        return false;
-    }
-
-    lua_getfield(L, 3, "headers");
-
-    lua_pushnil(L);
-    while (lua_next(L, -2) != 0) {
-        const char *header_name = lua_tostring(L, -2);
-        const char *value = lua_tostring(L, -1);
-        fprintf(stderr, "%s - %s\n", header_name, value);
-        lua_pop(L, 1);
-    }
-    lua_pop(L, 1);
-    return true;
-}
-
-
-static
-bool
-set_body(curl_t *ctx, CURL *easy, lua_State *L)
-{
-    (void)ctx;
-    (void)easy;
-    (void)L;
-    return true;
-}
-
-
-static
-bool
-set_method_type(curl_t *ctx, CURL *easy, lua_State *L)
-{
-    (void)ctx;
-    (void)easy;
-    (void)L;
-    return true;
+	if (!easy_ctx->write_fn)
+		return size * nmemb;
+	lua_rawgeti(easy_ctx->L, LUA_REGISTRYINDEX, easy_ctx->write_fn);
+	lua_pushlstring(easy_ctx->L, ptr, size * nmemb);
+	lua_rawgeti(easy_ctx->L, LUA_REGISTRYINDEX, easy_ctx->fn_ctx);
+	lua_pcall(easy_ctx->L, 2, 1, 0);
+	size_t written = lua_tointeger(easy_ctx->L, lua_gettop(easy_ctx->L));
+	lua_pop(easy_ctx->L, 1);
+	return written;
 }
 
 
 /*
  */
-static
-int
+static int
 async_request(lua_State *L)
 {
-    curl_t *ctx = curl_get(L);
-	const char *url = luaL_checkstring(L, 2);
+	/* FIXME: check number and type of input arguments */
+	CURL *easy = NULL;
+	struct easy_ctx *easy_ctx = NULL;
 
-    CURL *easy = curl_easy_init();
-    if (!easy) {
+	curl_t *ctx = curl_get(L);
+	const char *method = luaL_checkstring(L, 2);
+	const char *url = luaL_checkstring(L, 3);
+
+	easy = curl_easy_init();
+	if (!easy) {
 		return luaL_error(L, "curl: curl_easy_init failed!");
-    }
+	}
 
-    if (!set_method_type(ctx, easy, L)) {
-        return luaL_error(L, "curl: can't set method type");
-    }
+	easy_ctx = (struct easy_ctx *)
+		malloc(sizeof(struct easy_ctx));
+	memset(easy_ctx, 0, sizeof(struct easy_ctx));
+	easy_ctx->L = L;
+	if (lua_istable(L, 4)) {
+		int top = lua_gettop(L);
+		/* FIXME: push string can fail, use safe version */
+		lua_pushstring(L, "read");
+		lua_gettable(L, 4);
+		if (lua_isfunction(L, top + 1)) {
+			easy_ctx->read_fn = luaL_ref(L, LUA_REGISTRYINDEX);
+		} else {
+			easy_ctx->read_fn = LUA_REFNIL;
+			lua_pop(L, 1);
+		}
 
-    if (!set_headers(ctx, easy, L)) {
-        return luaL_error(L, "curl: can't set headers");
-    }
+		lua_pushstring(L, "write");
+		lua_gettable(L, 4);
+		if (lua_isfunction(L, top + 1)) {
+			easy_ctx->write_fn = luaL_ref(L, LUA_REGISTRYINDEX);
+		} else {
+			easy_ctx->write_fn = LUA_REFNIL;
+			lua_pop(L, 1);
+		}
 
-    if (!set_body(ctx, easy, L)) {
-        return luaL_error(L, "curl: can't set body");
-    }
+		lua_pushstring(L, "done");
+		lua_gettable(L, 4);
+		if (lua_isfunction(L, top + 1)) {
+			easy_ctx->done_fn = luaL_ref(L, LUA_REGISTRYINDEX);
+		} else {
+			easy_ctx->done_fn = LUA_REFNIL;
+			lua_pop(L, 1);
+		}
 
-    curl_easy_setopt(easy, CURLOPT_URL, url);
-    curl_easy_setopt(easy, CURLOPT_VERBOSE, 1L);
-    curl_easy_setopt(easy, CURLOPT_NOPROGRESS, 0L);
-    curl_easy_setopt(easy, CURLOPT_PROGRESSFUNCTION, prog_cb);
-    curl_easy_setopt(easy, CURLOPT_WRITEFUNCTION, write_cb);
-    curl_easy_setopt(easy, CURLOPT_LOW_SPEED_TIME, 3L);
-    curl_easy_setopt(easy, CURLOPT_LOW_SPEED_LIMIT, 10L);
+		lua_pushstring(L, "ctx");
+		lua_gettable(L, 4);
+		easy_ctx->fn_ctx = luaL_ref(L, LUA_REGISTRYINDEX);
+
+		lua_pushstring(L, "headers");
+		lua_gettable(L, 4);
+		if (!lua_isnil(L, top + 1)) {
+			lua_pushnil(L);
+			while (lua_next(L, -2) != 0) {
+				char header[4096];
+				snprintf(header, 4096, "%s: %s",
+					 lua_tostring(L, -2),
+					 lua_tostring(L, -1));
+				easy_ctx->headers =
+					curl_slist_append(easy_ctx->headers,
+							  header);
+				lua_pop(L, 1);
+			}
+		}
+		lua_pop(L, 1);
+	}
+
+	curl_easy_setopt(easy, CURLOPT_PRIVATE, easy_ctx);
+
+	curl_easy_setopt(easy, CURLOPT_URL, url);
+	curl_easy_setopt(easy, CURLOPT_FOLLOWLOCATION, 1);
+
+	curl_easy_setopt(easy, CURLOPT_READFUNCTION, read_cb);
+	curl_easy_setopt(easy, CURLOPT_READDATA, easy_ctx);
+
+	curl_easy_setopt(easy, CURLOPT_WRITEFUNCTION, write_cb);
+	curl_easy_setopt(easy, CURLOPT_WRITEDATA, easy_ctx);
+
+	if (!strcmp(method, "POST")) {
+		easy_ctx->headers = curl_slist_append(easy_ctx->headers,
+				     "Transfer-Encoding: chunked");
+		curl_easy_setopt(easy, CURLOPT_POST, 1);
+	} else if (!strcmp(method, "PUT")) {
+		easy_ctx->headers = curl_slist_append(easy_ctx->headers,
+				     "Transfer-Encoding: chunked");
+		curl_easy_setopt(easy, CURLOPT_UPLOAD, 1);
+	} else if (!strcmp(method, "DELETE")) {
+		/* FIXME: Do a custom rquest */
+	} else if (!strcmp(method, "GET")) {
+		curl_easy_setopt(easy, CURLOPT_HTTPGET, 1);
+	} else {
+		/* FIXME: */
+	}
+
+	if (easy_ctx->headers) {
+		curl_easy_setopt(easy,
+				 CURLOPT_HTTPHEADER,
+				 easy_ctx->headers);
+	}
+
 
     return curl_make_result(L,
             CURL_LAST,
@@ -237,6 +267,13 @@ async_request(lua_State *L)
              * the necessary socket_action() call will be called
              * by this app */
             curl_multi_add_handle(ctx->multi, easy));
+/*err:
+	if (easy_ctx)
+		free(easy_ctx);
+	if (easy)
+		curl_easy_cleanup(easy);
+	/ * FIXME: * /
+	return 0;*/
 }
 
 
@@ -265,16 +302,37 @@ lib_version(lua_State *L)
 
 static
 int
-sock_f(CURL *easy, curl_socket_t sfd, int what, void *ctx_, void *tail_ctx)
+sock_cb(CURL *easy, curl_socket_t sfd, int what,
+	curl_t *ctx, struct epoll_event *event)
 {
-    (void)tail_ctx;
-    (void)easy;
+	(void)easy;
+	bool epoll_new = false;
 
-    curl_t *ctx = (curl_t*) ctx_;
-    event_t event = {.sfd = sfd, .type = what};
-    push_event(ctx, event);
+	switch (what) {
+	case CURL_POLL_IN:
+	case CURL_POLL_OUT:
+	case CURL_POLL_INOUT:
+		if (!event) {
+			epoll_new = true;
+			event = (struct epoll_event *)
+				malloc(sizeof(struct epoll_event));
+			curl_multi_assign(ctx->multi, sfd, event);
+		}
+		event->data.fd = sfd;
+		event->events = what & CURL_POLL_IN ? EPOLLIN : 0 |
+				what & CURL_POLL_OUT ? EPOLLOUT : 0;
+		epoll_ctl(ctx->epollfd,
+			  epoll_new ? EPOLL_CTL_ADD : EPOLL_CTL_MOD,
+			  sfd, event);
+		break;
+	case CURL_POLL_REMOVE:
+		if (event)
+			free(event);
+		epoll_ctl(ctx->epollfd, EPOLL_CTL_DEL, sfd, NULL);
+		curl_multi_assign(ctx->multi, sfd, NULL);
+		break;
+	}
 
-    fiber_wakeup(ctx->io_fiber);
     return 0;
 }
 
@@ -292,16 +350,11 @@ lib_new(lua_State *L)
 	}
 
     memset(ctx, 0, sizeof(curl_t));
+    ctx->epollfd = epoll_create(1);
 
     ctx->multi = curl_multi_init();
     if (!ctx->multi) {
         reason = "cur; can't create 'multi'";
-        goto error;
-    }
-
-    ctx->fiber = fiber_new("__curl_fiber", work_f);
-    if (!ctx->fiber) {
-        reason = "curl can't create new fiber: __curl_fiber";
         goto error;
     }
 
@@ -311,15 +364,12 @@ lib_new(lua_State *L)
         goto error;
     }
 
-    curl_multi_setopt(ctx->multi, CURLMOPT_SOCKETFUNCTION, sock_f);
+    curl_multi_setopt(ctx->multi, CURLMOPT_SOCKETFUNCTION, sock_cb);
     curl_multi_setopt(ctx->multi, CURLMOPT_SOCKETDATA, ctx);
 
     ctx->need_work = true;
 
     /* Run fibers */
-    fiber_set_joinable(ctx->fiber, true);
-    fiber_start(ctx->fiber, ctx);
-
     fiber_set_joinable(ctx->io_fiber, true);
     fiber_start(ctx->io_fiber, ctx);
 
@@ -334,12 +384,11 @@ error:
     if (ctx->multi) {
         curl_multi_cleanup(ctx->multi);
     }
-    if (ctx->fiber) {
-        fiber_cancel(ctx->fiber);
-    }
     if (ctx->io_fiber) {
         fiber_cancel(ctx->io_fiber);
     }
+    if (ctx->epollfd)
+	close(ctx->epollfd);
 
     return luaL_error(L, reason);
 }

@@ -51,12 +51,8 @@
 #define WORK_TIMEOUT 0.3
 
 typedef struct {
-  int sfd;
-  int type;
-} event_t;
-
-typedef struct {
 	lua_State *L;
+	int epollfd;
   CURL *easy;
   CURLM *multi;
   struct fiber *fiber;
@@ -64,36 +60,7 @@ typedef struct {
   int still_running;
   bool need_work;
 
-  event_t events[64];
-  size_t events_tail;
-
-  struct curl_slist *headers;
 } curl_t;
-
-
-static inline
-void
-push_event(curl_t *ctx, event_t event)
-{
-  if (ctx->events_tail < 64) {
-    ctx->events[ctx->events_tail] = event;
-    ++ctx->events_tail;
-  }
-}
-
-static inline
-bool
-pop_event(curl_t *ctx, event_t *event)
-{
-  assert(event);
-
-  if (ctx->events_tail != 0) {
-    *event = ctx->events[ctx->events_tail - 1];
-    --ctx->events_tail;
-    return true;
-  }
-  return false;
-}
 
 
 static inline

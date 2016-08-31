@@ -28,7 +28,7 @@
 --  THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
 --  SUCH DAMAGE.
 --
-
+local fiber = require'fiber'
 local curl_driver = require('curl.driver')
 
 local curl_mt
@@ -63,13 +63,53 @@ local http = function()
   }, curl_mt)
 end
 
+
+local function read_cb(cnt, ctx)
+    local res = ctx.readen:sub(1, cnt)
+    ctx.readen = ctx.readen:sub(cnt + 1)
+    return res
+end
+
+local function write_cb(data, ctx)
+    ctx.written = ctx.written .. data
+    return data:len()
+end
+
+local function done_cb(result, ctx)
+    ctx.done = true
+    fiber.wakeup(ctx.fiber)
+end
+
+local function sync_request(self, method, url, body, options)
+    options = options or {}
+    local ctx = {
+        done = false,
+	fiber = fiber.self(),
+	written = '',
+	readen = body}
+
+    self.curl:async_request(method, url, {
+        headers = options.headers,
+        read = read_cb,
+        write = write_cb,
+        done = done_cb,
+        ctx = ctx})
+
+    fiber.sleep(90)
+    if not ctx.done then
+        return error(timeout)
+    end
+    return ctx.written
+end
+
 curl_mt = {
 
   __index = {
 
-    request = function(self, url, options)
-      return self.curl:async_request(url, options)
+    request = function(self, method, url, options)
+      return self.curl:async_request(method, url, options)
     end,
+    sync_request = sync_request
   },
 }
 
