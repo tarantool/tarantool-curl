@@ -75,8 +75,9 @@ local function write_cb(data, ctx)
     return data:len()
 end
 
-local function done_cb(result, ctx)
+local function done_cb(code, ctx)
     ctx.done = true
+    ctx.code = code
     fiber.wakeup(ctx.fiber)
 end
 
@@ -99,7 +100,7 @@ local function sync_request(self, method, url, body, options)
     if not ctx.done then
         return error(timeout)
     end
-    return ctx.written
+    return {code = ctx.code, body = ctx.written}
 end
 
 curl_mt = {

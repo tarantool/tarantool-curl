@@ -68,7 +68,10 @@ check_multi_info(curl_t *ctx)
 	    if (easy_ctx->done_fn != LUA_REFNIL) {
 		lua_rawgeti(easy_ctx->L, LUA_REGISTRYINDEX,
 			    easy_ctx->done_fn);
-		lua_pushinteger(easy_ctx->L, msg->data.result);
+		long response_code;
+		curl_easy_getinfo(easy, CURLINFO_RESPONSE_CODE,
+				  &response_code);
+		lua_pushinteger(easy_ctx->L, response_code);
 		lua_rawgeti(easy_ctx->L, LUA_REGISTRYINDEX,
 			    easy_ctx->fn_ctx);
 		lua_pcall(easy_ctx->L, 2, 0 ,0);
