@@ -10,6 +10,7 @@ include_directories(${TARANTOOL_INCLUDE_DIRS})
 
 # Set CFLAGS
 #set(MY_C_FLAGS "-Wall -O0 -Wextra -Werror -pedantic -std=gnu99")
+set(MY_C_FLAGS "-O0 -std=gnu99")
 set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} ${MY_C_FLAGS}")
 set(CMAKE_C_FLAGS_DEBUG "${CMAKE_C_FLAGS_DEBUG} ${MY_C_FLAGS}")
 
