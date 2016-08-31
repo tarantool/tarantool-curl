@@ -8,6 +8,7 @@ URL: https://github.com/tarantool/tarantool-curl
 Source0: https://github.com/tarantool/%{name}/archive/%{version}/%{name}-%{version}.tar.gz
 BuildRequires: cmake >= 2.8
 BuildRequires: gcc >= 4.5
+BuildRequires: libcurl-devel
 BuildRequires: tarantool-devel >= 1.6.8.0
 BuildRequires: /usr/bin/prove
 Requires: tarantool >= 1.6.8.0
@@ -21,9 +22,6 @@ This package provides a Curl based HTTP client for Tarantool.
 %build
 %cmake . -DCMAKE_BUILD_TYPE=RelWithDebInfo
 make %{?_smp_mflags}
-
-%check
-make %{?_smp_mflags} check
 
 %install
 %make_install
