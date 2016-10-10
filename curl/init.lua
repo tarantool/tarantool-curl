@@ -75,8 +75,9 @@ local function write_cb(data, ctx)
     return data:len()
 end
 
-local function done_cb(code, ctx)
+local function done_cb(res, code, ctx)
     ctx.done = true
+    ctx.res = res
     ctx.code = code
     fiber.wakeup(ctx.fiber)
 end
@@ -90,6 +91,8 @@ local function sync_request(self, method, url, body, options)
 	readen = body}
 
     self.curl:async_request(method, url, {
+        ca_path = options.ca_path,
+        ca_file = options.ca_file,
         headers = options.headers,
         read = read_cb,
         write = write_cb,
@@ -98,7 +101,10 @@ local function sync_request(self, method, url, body, options)
 
     fiber.sleep(90)
     if not ctx.done then
-        return error(timeout)
+        return error('Request timeout')
+    end
+    if ctx.res ~= 0 then
+        return error(ctx.code)
     end
     return {code = ctx.code, body = ctx.written}
 end

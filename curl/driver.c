@@ -71,10 +71,15 @@ check_multi_info(curl_t *ctx)
 		long response_code;
 		curl_easy_getinfo(easy, CURLINFO_RESPONSE_CODE,
 				  &response_code);
-		lua_pushinteger(easy_ctx->L, response_code);
+		lua_pushinteger(easy_ctx->L, res);
+		if (res) {
+			lua_pushstring(easy_ctx->L, curl_easy_strerror(res));
+		} else {
+			lua_pushinteger(easy_ctx->L, response_code);
+		}
 		lua_rawgeti(easy_ctx->L, LUA_REGISTRYINDEX,
 			    easy_ctx->fn_ctx);
-		lua_pcall(easy_ctx->L, 2, 0 ,0);
+		lua_pcall(easy_ctx->L, 3, 0 ,0);
 	    }
 	    luaL_unref(easy_ctx->L, LUA_REGISTRYINDEX, easy_ctx->read_fn);
 	    luaL_unref(easy_ctx->L, LUA_REGISTRYINDEX, easy_ctx->write_fn);
@@ -227,6 +232,22 @@ async_request(lua_State *L)
 			}
 		}
 		lua_pop(L, 1);
+
+		lua_pushstring(L, "ca_path");
+		lua_gettable(L, 4);
+		if (!lua_isnil(L, top + 1)) {
+			curl_easy_setopt(easy, CURLOPT_CAPATH,
+					 lua_tostring(L, top + 1));
+		}
+		lua_pop(L, 1);
+
+		lua_pushstring(L, "ca_file");
+		lua_gettable(L, 4);
+		if (!lua_isnil(L, top + 1)) {
+			curl_easy_setopt(easy, CURLOPT_CAINFO,
+					 lua_tostring(L, top + 1));
+		}
+		lua_pop(L, 1);
 	}
 
 	curl_easy_setopt(easy, CURLOPT_PRIVATE, easy_ctx);
@@ -239,6 +260,8 @@ async_request(lua_State *L)
 
 	curl_easy_setopt(easy, CURLOPT_WRITEFUNCTION, write_cb);
 	curl_easy_setopt(easy, CURLOPT_WRITEDATA, easy_ctx);
+
+	curl_easy_setopt(easy, CURLOPT_SSL_VERIFYPEER, 1);
 
 	if (!strcmp(method, "POST")) {
 		easy_ctx->headers = curl_slist_append(easy_ctx->headers,
