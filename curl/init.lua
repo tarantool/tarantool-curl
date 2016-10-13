@@ -71,6 +71,7 @@ local function read_cb(cnt, ctx)
 end
 
 local function write_cb(data, ctx)
+    ctx.written = ctx.written .. data
     return data:len()
 end
 
