@@ -341,7 +341,7 @@ sock_cb(CURL *easy, curl_socket_t sfd, int what,
 		if (!event) {
 			epoll_new = true;
 			event = (struct epoll_event *)
-				malloc(sizeof(struct epoll_event));
+				calloc(1, sizeof(struct epoll_event));
 			curl_multi_assign(ctx->multi, sfd, event);
 		}
 		event->data.fd = sfd;
@@ -352,10 +352,10 @@ sock_cb(CURL *easy, curl_socket_t sfd, int what,
 			  sfd, event);
 		break;
 	case CURL_POLL_REMOVE:
-		if (event)
-			free(event);
 		epoll_ctl(ctx->epollfd, EPOLL_CTL_DEL, sfd, NULL);
 		curl_multi_assign(ctx->multi, sfd, NULL);
+		if (event)
+			free(event);
 		break;
 	}
 
