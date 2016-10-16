@@ -413,7 +413,6 @@ err:
 }
 
 
-
 static
 int
 lib_new(lua_State *L)

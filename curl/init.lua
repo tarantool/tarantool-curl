@@ -114,8 +114,8 @@ local function sync_request(self, method, url, body, options)
 
     fiber.sleep(options.timeout or 90)
 
-    if not ctx.done then
-        return error('Request timeout')
+    while not ctx.done do
+        fiber.sleep(1)
     end
     if ctx.res ~= 0 then
         return error(ctx.code)
