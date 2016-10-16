@@ -102,20 +102,24 @@ local function sync_request(self, method, url, body, options)
         readen = body or '',
     }
 
+    local headers = options.headers or {}
+
+    --
+    -- I have to set CL since CURL-engine works async
+    headers['Content-Length'] = body:len()
+
     self.curl:async_request(method, url, {
         ca_path = options.ca_path,
         ca_file = options.ca_file,
-        headers = options.headers,
+        headers = headers,
         read = read_cb,
         write = write_cb,
         done = done_cb,
         ctx = ctx
     })
 
-    fiber.sleep(options.timeout or 90)
-
     while not ctx.done do
-        fiber.sleep(1)
+        fiber.sleep(0.01)
     end
     if ctx.res ~= 0 then
         return error(ctx.code)
@@ -136,7 +140,11 @@ curl_mt = {
     --    options - this is a table of options.
     --              ca_path - a path to ssl certificate dir;
     --              ca_file - a path to ssl certificate file;
-    --              headers - a table of HTTP headers;
+    --              headers - a table of HTTP headers.
+    --                        NOTE if you pass a body,
+    --                        then please you have to set Content-Length
+    --                        header!
+    --              curl:async_request(...,)
     --              timeout - a deadline of this function execution.
     --              If the deadline is expired then this function raise an error.
     --              Default is 90 seconds.

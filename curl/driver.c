@@ -110,7 +110,7 @@ check_multi_info(curl_t *ctx)
 static int
 io_f(va_list ap)
 {
-  static const double sliping_timeout =
+  static const double sleeping_timeout =
 #if defined (MY_DEBUG)
     0.2
 #else
@@ -132,13 +132,12 @@ io_f(va_list ap)
                                &ctx->still_running);
     }
 
-    if (rc <= 0)
-      fiber_sleep(sliping_timeout);
-
     curl_multi_socket_action(ctx->multi, CURL_SOCKET_TIMEOUT, 0,
                              &ctx->still_running);
     check_multi_info(ctx);
 
+    if (rc <= 0)
+      fiber_sleep(sleeping_timeout);
   }
 
   return 0;
@@ -148,13 +147,15 @@ io_f(va_list ap)
 static size_t
 read_cb(void *ptr, size_t size, size_t nmemb, struct easy_ctx *easy_ctx)
 {
+  size_t total_size = size * nmemb;
+
   dd("read_cb is calling size:%zu, nmemb:%zu", size, nmemb);
 
   if (!easy_ctx->read_fn)
-    return 0;
+    return total_size;
 
   lua_rawgeti(easy_ctx->L, LUA_REGISTRYINDEX, easy_ctx->read_fn);
-  lua_pushnumber(easy_ctx->L, size * nmemb);
+  lua_pushnumber(easy_ctx->L, total_size);
   lua_rawgeti(easy_ctx->L, LUA_REGISTRYINDEX, easy_ctx->fn_ctx);
   lua_pcall(easy_ctx->L, 2, 1, 0);
   size_t readen;
@@ -277,6 +278,12 @@ async_request(lua_State *L)
     if (!lua_isnil(L, top + 1))
       curl_easy_setopt(easy, CURLOPT_CAINFO, lua_tostring(L, top + 1));
     lua_pop(L, 1);
+
+    lua_pushstring(L, "verbose");
+    lua_gettable(L, 4);
+    if (!lua_isnil(L, top + 1))
+      curl_easy_setopt(easy, CURLOPT_VERBOSE, lua_tonumber(L, top + 1));
+    lua_pop(L, 1);
   }
 
   curl_easy_setopt(easy, CURLOPT_PRIVATE, easy_ctx);
@@ -292,17 +299,17 @@ async_request(lua_State *L)
 
   curl_easy_setopt(easy, CURLOPT_SSL_VERIFYPEER, 1);
 
+  curl_easy_setopt(easy, CURLOPT_NOPROGRESS, 1);
+
   if (!strcmp(method, "POST")) {
-    easy_ctx->headers = curl_slist_append(easy_ctx->headers,
-                                          "Transfer-Encoding: chunked");
+    easy_ctx->headers = curl_slist_append(easy_ctx->headers, "Accept: */*");
     if (!easy_ctx->headers) {
       reason = "can't allocate memory (curl_slist_append)";
       goto err;
     }
     curl_easy_setopt(easy, CURLOPT_POST, 1);
   } else if (!strcmp(method, "PUT")) {
-    easy_ctx->headers = curl_slist_append(easy_ctx->headers,
-                                          "Transfer-Encoding: chunked");
+    easy_ctx->headers = curl_slist_append(easy_ctx->headers, "Accept: */*");
     if (!easy_ctx->headers) {
       reason = "can't allocate memory (curl_slist_append)";
       goto err;
