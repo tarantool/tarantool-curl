@@ -7,23 +7,31 @@ package.preload['curl.driver'] = '../curl/driver.so'
 -- }}
 
 local curl = require('curl')
+local json = require('json')
 
 http = curl.http()
 
 local headers = { my_header = "1", my_header2 = "2" }
+local json_body = json.encode({key="value"})
 
 -- Sync request
-local r = http:sync_get_request('https://tarantool.org', {headers=headers})
+local r = http:sync_get_request(
+  'POST', 'https://tarantool.org', json_body
+  {headers=headers})
 if r.code ~= 200 then
   error('request is expecting 200')
 end
 print('server has responsed, data', r.body)
 
 -- Aync request
-local my_ctx = {}
+local my_ctx = { out_buffer = json_body }
 
-http:request('GET', 'tarantool.org', {
-  read = function(cnt, ctx) end,
+http:request('POST', 'tarantool.org', {
+  read = function(cnt, ctx)
+    local to_server = ctx.out_buffer:sub(1, cnt)
+    ctx.out_buffer = ctx.out_buffer:sub(cnt + 1)
+    return to_server
+  end,
   write = function(data, ctx)
     print('server has responsed, data', data)
     return data:len()

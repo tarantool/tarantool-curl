@@ -28,42 +28,29 @@
 --  THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
 --  SUCH DAMAGE.
 --
-local fiber = require'fiber'
+local fiber = require('fiber')
 local curl_driver = require('curl.driver')
+local yaml = require('yaml')
 
 local curl_mt
 
 --
---  Create a new mosquitto client instance.
---
---  Parameters:
---  	id -            String to use as the client id. If NULL, a random client id
---  	                will be generated. If id is NULL, clean_session must be true.
---  	clean_session - set to true to instruct the broker to clean all messages
---                   and subscriptions on disconnect, false to instruct it to
---                   keep them. See the man page mqtt(7) for more details.
---                   Note that a client will never discard its own outgoing
---                   messages on disconnect. Calling <connect> or
---                   <reconnect> will cause the messages to be resent.
---                   Use <reinitialise> to reset a client to its
---                   original state.
---                   Must be set to true if the id parameter is NULL.
+--  Create a new curl instance.
 --
 --  Returns:
---     mqtt object<see mqtt_mt> or raise error
+--     curl object or raise error
 --
-local http = function()
+local http = function(VERBOSE)
   local curl = curl_driver.new()
   return setmetatable({
     VERSION = curl:version(), -- Str fmt: X.X.X
-    POLL_INTERVAL = 0.0,
-
     curl = curl,
-    fiber = nil,
   }, curl_mt)
 end
 
-
+--
+-- Internal
+-- {{
 local function read_cb(cnt, ctx)
     local res = ctx.readen:sub(1, cnt)
     ctx.readen = ctx.readen:sub(cnt + 1)
@@ -81,14 +68,39 @@ local function done_cb(res, code, ctx)
     ctx.code = code
     fiber.wakeup(ctx.fiber)
 end
+--
+-- }}
+--
 
+--
+--  <async_request> This function does HTTP request
+--
+--  Parameters:
+--
+--    method  - HTTP method, like GET, POST, PUT and so on
+--    url     - HTTP url, like https://tarantool.org/doc
+--    body    - this parameter is optional, you may use it for passing the
+--              body to a server. Like 'My text string!'
+--    options - this is a table of options.
+--              ca_path - a path to ssl certificate dir;
+--              ca_file - a path to ssl certificate file;
+--              headers - a table of HTTP headers;
+--              timeout - a deadline of this function execution.
+--              If the deadline is expired then this function raise an error.
+--              Default is 90 seconds.
+--  Returns:
+--     {code=NUMBER, body=STRING}
+--
 local function sync_request(self, method, url, body, options)
+
     options = options or {}
+
     local ctx = {
         done = false,
-	fiber = fiber.self(),
-	written = '',
-	readen = body}
+        fiber = fiber.self(),
+        written = '',
+        readen = body or '',
+    }
 
     self.curl:async_request(method, url, {
         ca_path = options.ca_path,
@@ -97,26 +109,89 @@ local function sync_request(self, method, url, body, options)
         read = read_cb,
         write = write_cb,
         done = done_cb,
-        ctx = ctx})
+        ctx = ctx
+    })
 
-    fiber.sleep(90)
+    fiber.sleep(options.timeout or 90)
+
     if not ctx.done then
         return error('Request timeout')
     end
     if ctx.res ~= 0 then
         return error(ctx.code)
     end
+
     return {code = ctx.code, body = ctx.written}
 end
 
 curl_mt = {
-
   __index = {
-
+    --
+    --  <async_request> This function does HTTP request
+    --
+    --  Parameters:
+    --
+    --    method  - HTTP method, like GET, POST, PUT and so on
+    --    url     - HTTP url, like https://tarantool.org/doc
+    --    options - this is a table of options.
+    --              ca_path - a path to ssl certificate dir;
+    --              ca_file - a path to ssl certificate file;
+    --              headers - a table of HTTP headers;
+    --              timeout - a deadline of this function execution.
+    --              If the deadline is expired then this function raise an error.
+    --              Default is 90 seconds.
+    --              done - a callback function which called only if request has
+    --              completed.
+    --              write - a callback. if a server returns some data, then
+    --                      this function was benig called.
+    --              Example:
+    --                function(data, context)
+    --                  context.in_buffer = context.in_buffer .. data
+    --                  return data:len()
+    --                end
+    --
+    --              read - a callback. if this client have to pass some
+    --                     data to a server, then this function was benig called.
+    --              Example:
+    --                function(content_size, context)
+    --                  local out_buffer = context.out_buffer
+    --                  local to_server = out_buffer:sub(1, content_size)
+    --                  context.out_buffer = out_buffer:sub(content_size + 1)
+    --                  return to_server
+    --                end
+    --              done - a callback. if request has completed, then this
+    --              function was being called.
+    --
+    --              ctx - this is, a user defined context.
+    --  Returns:
+    --     0 or raise an error
+    --
     request = function(self, method, url, options)
-      return self.curl:async_request(method, url, options)
+      local curl = self.curl
+      if not method or not url or not options then
+        error('the function expecting tree args - method, url and options')
+      end
+      return curl:async_request(method, url, options)
     end,
-    sync_request = sync_request
+
+    --
+    -- see <request>
+    --
+    get_request = function(self, url, options)
+      return self.curl:async_request('GET', url, options)
+    end,
+
+    --
+    -- See <sync_request>
+    --
+    sync_request = sync_request,
+
+    --
+    -- See <sync_request>
+    --
+    sync_get_request = function(self, url, options)
+      return sync_request(self, 'GET', url, options)
+    end
   },
 }
 
