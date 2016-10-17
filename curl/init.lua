@@ -106,7 +106,9 @@ local function sync_request(self, method, url, body, options)
 
     --
     -- I have to set CL since CURL-engine works async
-    headers['Content-Length'] = body:len()
+    if body then
+        headers['Content-Length'] = body:len()
+    end
 
     self.curl:async_request(method, url, {
         ca_path = options.ca_path,
@@ -119,7 +121,7 @@ local function sync_request(self, method, url, body, options)
     })
 
     while not ctx.done do
-        fiber.sleep(0.01)
+        fiber.sleep(0.001)
     end
     if ctx.res ~= 0 then
         return error(ctx.code)
