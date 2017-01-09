@@ -1,5 +1,5 @@
 --
---  Copyright (C) 2016 Tarantool AUTHORS: please see AUTHORS file.
+--  Copyright (C) 2016-2017 Tarantool AUTHORS: please see AUTHORS file.
 --
 --  Redistribution and use in source and binary forms, with or
 --  without modification, are permitted provided that the following
@@ -42,8 +42,13 @@ local curl_mt
 --
 local http = function(VERBOSE)
   local curl = curl_driver.new()
+  ok, version = curl:version()
+  if not ok then
+    version = '0.0.1'
+  end
   return setmetatable({
-    VERSION = curl:version(), -- Str fmt: X.X.X
+    VERSION = version, -- Str fmt: X.X.X
+    VERBOSE = VERBOSE,
     curl = curl,
   }, curl_mt)
 end
@@ -172,14 +177,14 @@ curl_mt = {
     --              done - a callback. if request has completed, then this
     --              function was being called.
     --
-    --              ctx - this is, a user defined context.
+    --              ctx - this is a user defined context.
     --  Returns:
     --     0 or raise an error
     --
     request = function(self, method, url, options)
       local curl = self.curl
       if not method or not url or not options then
-        error('the function expecting tree args - method, url and options')
+        error('function expects method, url and options')
       end
       return curl:async_request(method, url, options)
     end,
@@ -199,8 +204,15 @@ curl_mt = {
     --
     -- See <sync_request>
     --
+    sync_post_request = function(self, url, body, options)
+      return sync_request(self, 'POST', url, body, options)
+    end,
+
+    --
+    -- See <sync_request>
+    --
     sync_get_request = function(self, url, options)
-      return sync_request(self, 'GET', url, options)
+      return sync_request(self, 'GET', url, '', options)
     end
   },
 }

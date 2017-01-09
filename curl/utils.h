@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2016 Tarantool AUTHORS: please see AUTHORS file.
+ * Copyright (C) 2016-2017 Tarantool AUTHORS: please see AUTHORS file.
  *
  * Redistribution and use in source and binary forms, with or
  * without modification, are permitted provided that the following

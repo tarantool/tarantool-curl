@@ -37,3 +37,9 @@ http:request('GET', 'tarantool.org', {
   ctx = my_ctx,
   headers = headers,
 })
+
+res = http:sync_request('GET', 'mail.ru')
+print('GET', res.body)
+res = http:sync_request('PUT', 'www.rbc.ru', '{data: 123}',
+  {headers = {['Content-type'] = 'application/json'}})
+print('PUT', res.body)
