@@ -23,7 +23,7 @@ and with minimal delay.
 * [How to install](#how-to-install)
 * [Getting started](#getting-started)
 * [API reference](#api-reference)
-* [Example functions](#example-function)
+* [Example function](#example-function)
 * [Example program](#example-program)
 
 ## How to install
