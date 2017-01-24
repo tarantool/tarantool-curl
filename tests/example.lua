@@ -17,22 +17,23 @@ local r = http:sync_get_request('https://tarantool.org', {headers=headers})
 if r.code ~= 200 then
   error('request is expecting 200')
 end
-print('server has responsed, data', r.body)
+print('server has responsed, data', r.code)
 
--- Aync request
+-- Async request
 local my_ctx = {}
 
 http:request('GET', 'tarantool.org', {
   read = function(cnt, ctx) end,
   write = function(data, ctx)
-    print('server has responsed, data', data)
+    print('server has responsed, data ' .. data)
     return data:len()
   end,
   done = function(res, code, ctx)
-    if cide ~= 200 then
+    ctx.done = true  
+    if code ~= 200 then
       error('request is expecting 200')
     end
-    print('server has responsed, statuses', res, code)
+    print('server has responsed, statuses', code)
   end,
   ctx = my_ctx,
   headers = headers,

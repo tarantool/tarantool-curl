@@ -64,7 +64,7 @@ check_multi_info(curl_t *ctx)
 
     if (msg->msg == CURLMSG_DONE) {
 
-      dd("curl has new messages, messagess processing has started");
+      dd("curl has new messages, messages processing has started");
 
       CURL *easy = msg->easy_handle;
       CURLcode res = msg->data.result;
@@ -259,7 +259,7 @@ async_request(lua_State *L)
                                          lua_tostring(L, -1));
         easy_ctx->headers = curl_slist_append(easy_ctx->headers, header);
         if (!easy_ctx->headers) {
-          reason = "can't allocate memry (curl_slist_append)";
+          reason = "can't allocate memory (curl_slist_append)";
           goto err;
         }
         lua_pop(L, 1);
@@ -316,7 +316,7 @@ async_request(lua_State *L)
     }
     curl_easy_setopt(easy, CURLOPT_UPLOAD, 1);
   } else if (!strcmp(method, "DELETE")) {
-    /* FIXME: Do a custom rquest */
+    /* FIXME: Do a custom request */
   } else if (!strcmp(method, "GET")) {
     curl_easy_setopt(easy, CURLOPT_HTTPGET, 1);
   } else {
