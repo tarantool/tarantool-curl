@@ -3,7 +3,7 @@
 -- Those lines of code are for debug purposes only
 -- So you have to ignore them
 -- {{
-package.preload['curl.driver'] = '../curl/driver.so'
+-- package.preload['curl.driver'] = '../curl/driver.so'
 -- }}
 
 local curl = require('curl')
@@ -19,14 +19,14 @@ if r.code ~= 200 then
 end
 print('server has responsed, data', r.code)
 
--- Async request
+- Async request
 local my_ctx = {}
 
-http:request('GET', 'tarantool.org', {
+http:request('PUT', 'https://httpbin.org/put', {
   read = function(cnt, ctx) end,
   write = function(data, ctx)
     print('server has responsed, data ' .. data)
-    return data:len()
+   return data:len()
   end,
   done = function(res, code, ctx)
     ctx.done = true  
@@ -39,8 +39,13 @@ http:request('GET', 'tarantool.org', {
   headers = headers,
 })
 
-res = http:sync_request('GET', 'mail.ru')
-print('GET', res.body)
-res = http:sync_request('PUT', 'www.rbc.ru', '{data: 123}',
-  {headers = {['Content-type'] = 'application/json'}})
-print('PUT', res.body)
+fiber = require('fiber')
+while not my_ctx.done do
+    fiber.sleep(0.001)
+end
+print ("Reached")
+--res = http:sync_request('GET', 'mail.ru')
+--print('GET', res.body)
+--res = http:sync_request('PUT', 'www.rbc.ru', '{data: 123}',
+--  {headers = {['Content-type'] = 'application/json'}})
+--print('PUT', res.body)

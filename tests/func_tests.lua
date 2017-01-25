@@ -85,7 +85,7 @@ function good_done_cb(res, code, ctx)
         ctx.msg = 'request is expecting 200, returned: ' .. code
     end
 end
---
+
 function good_write_cb(data, ctx)
     if json.decode(data).headers.Host ~= right_response_headers_host then
         ctx.ok = false
@@ -128,12 +128,12 @@ function async_get(value)
     ctx.msg = nil
     local response = nil
     if value.param then
-         response = value.f(http, value.param, host,
+        response = value.f(http, value.param, host,
          {done=dcb, write=wcb, read=rcb, ctx=ctx})
     else
          response = value.f(http, host,
          {done=dcb, write=wcb, read=rcb, ctx=ctx}) 
-    end
+   end
     while not ctx.done do
         fiber.sleep(0.001)
     end
@@ -150,7 +150,6 @@ for key, value in pairs(async_funcs)
         run(key ..  " valid request", async_get, tmp)
         run(key ..  " invalid request", async_get, value)
     end
---
 --}}
 
 function write1(data, ctx)
@@ -163,6 +162,7 @@ end
 
 
 post_requests = {}
+<<<<<<< HEAD
 post_requests["sync_post_request"] = {
     f = http.sync_post_request, 
     param = nil, 
@@ -212,7 +212,7 @@ function post_test(value)
            headers = headers, ctx=ctx
        })
 
-        while not ctx.done
+       while not ctx.done
             do
                 fiber.sleep(0.001)
             end
@@ -228,7 +228,7 @@ function post_test(value)
            end
         
            if json.decode(r.body)["headers"]["Content-Type"] ~= value_header then
-                return false, "Unexpected body answer: " .. r.body
+               return false, "Unexpected body answer: " .. r.body
            end
         else
             local r = value.f(http, value.host, '',{headers=headers})
@@ -237,7 +237,7 @@ function post_test(value)
             end
         
             if json.decode(r.body)["headers"]["Content-Type"] ~= value_header then
-                return false, "Unexpected body answer: " .. r.body
+               return false, "Unexpected body answer: " .. r.body
             end
         end
     end
