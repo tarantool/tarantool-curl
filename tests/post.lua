@@ -3,7 +3,7 @@
 -- Those lines of code are for debug purposes only
 -- So you have to ignore them
 -- {{
--- package.preload['curl.driver'] = 'curl/driver.so'
+package.preload['curl.driver'] = 'curl/driver.so'
 -- }}
 
 local curl = require('curl')

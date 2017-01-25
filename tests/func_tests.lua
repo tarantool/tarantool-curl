@@ -162,7 +162,6 @@ end
 
 
 post_requests = {}
-<<<<<<< HEAD
 post_requests["sync_post_request"] = {
     f = http.sync_post_request, 
     param = nil, 
