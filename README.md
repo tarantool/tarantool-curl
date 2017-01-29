@@ -29,11 +29,12 @@ and with minimal delay.
 ## How to install
 
 We assume that you have Tarantool 1.7 and an operating system with developer
-tools including `cmake`, a C compiler, `git` and Lua.
+tools including `cmake`, a C suppors gnu99 compiler, `git` and Lua.
 
-You will need the `curl` developer package. To download and install it, say
+You will need the `curl` and `libev` developer packages. To download and install it, say
 (example for Ubuntu):
 ```
+sudo apt-get install libev libev-dev
 sudo apt-get install curl
 sudo apt-get install libcurl4-openssl-dev
 ```
