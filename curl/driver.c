@@ -258,6 +258,16 @@ error_exit:
 
 
 static
+void
+add_field_u64(lua_State *L, const char *key, uint64_t value)
+{
+    lua_pushstring(L, key);
+    lua_pushinteger(L, value);
+    lua_settable(L, -3);  /* 3rd element from the stack top */
+}
+
+
+static
 int
 tnt_lib_stat(lua_State *L)
 {
@@ -271,25 +281,14 @@ tnt_lib_stat(lua_State *L)
 
     lua_newtable(L);
 
-    lua_pushstring(L, "active_requests");
-    lua_pushinteger(L, l->stat.active_requests);
-    lua_settable(L, -3);  /* 3rd element from the stack top */
-
-    lua_pushstring(L, "socket_added");
-    lua_pushinteger(L, l->stat.socket_added);
-    lua_settable(L, -3);
-
-    lua_pushstring(L, "socket_deleted");
-    lua_pushinteger(L, l->stat.socket_deleted);
-    lua_settable(L, -3);
-
-    lua_pushstring(L, "loop_calls");
-    lua_pushinteger(L, l->stat.loop_calls);
-    lua_settable(L, -3);
-
-    lua_pushstring(L, "socket_action_failed");
-    lua_pushinteger(L, l->stat.socket_action_failed);
-    lua_settable(L, -3);
+    add_field_u64(L, "active_requests", (uint64_t) l->stat.active_requests);
+    add_field_u64(L, "socket_added", (uint64_t) l->stat.socket_added);
+    add_field_u64(L, "socket_deleted", (uint64_t) l->stat.socket_deleted);
+    add_field_u64(L, "loop_calls", (uint64_t) l->stat.loop_calls);
+    add_field_u64(L, "total_requests", l->stat.total_requests);
+    add_field_u64(L, "http_200_responses",  l->stat.http_200_responses);
+    add_field_u64(L, "http_other_responses", l->stat.http_other_responses);
+    add_field_u64(L, "failed_requests", (uint64_t) l->stat.failed_requests);
 
     return 1;
 }

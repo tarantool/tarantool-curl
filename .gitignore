@@ -18,3 +18,5 @@ install_manifest.txt
 *~
 .gdb_history
 *.old
+build
+node_modules

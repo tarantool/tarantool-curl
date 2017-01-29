@@ -34,6 +34,7 @@
 
 #include <assert.h>
 #include <unistd.h>
+#include <inttypes.h>
 #include <stdbool.h>
 #include <sys/time.h>
 #include <time.h>
@@ -56,11 +57,14 @@ typedef struct {
   int             still_running;
 
   struct {
+    uint64_t      total_requests;
+    uint64_t      http_200_responses;
+    uint64_t      http_other_responses;
+    size_t        failed_requests;
     size_t        active_requests;
     size_t        socket_added;
     size_t        socket_deleted;
     size_t        loop_calls;
-    size_t        socket_action_failed;
   } stat;
 
 } lib_ctx_t;

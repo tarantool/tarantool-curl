@@ -46,15 +46,17 @@ basic_features(void)
 
     lib_ctx_t *l = lib_new();
 
-    bool done = false;
     for (;;) {
-        if (l->stat.active_requests > 100)
-            done = true;
-        if (!done)
-            new_conn_test(l, "google.com/");
-        lib_loop(l, 0.0);
-        if (done && l->stat.active_requests == 0)
+        new_conn_test(l, "127.0.0.1:10000/");
+        if (l->stat.active_requests > 10)
             break;
+        lib_loop(l, 0.0);
+    }
+
+    for (;;) {
+        if (l->stat.active_requests == 0)
+            break;
+        lib_loop(l, 0.0);
     }
 
     lib_print_stat(l, stderr);

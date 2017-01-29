@@ -1,3 +1,4 @@
+#!/usr/bin/env node
 /*
  * Copyright (C) 2016 - 2017 Tarantool AUTHORS: please see AUTHORS file.
  *
@@ -29,49 +30,13 @@
  * SUCH DAMAGE.
  */
 
-#ifndef DRIVER_H_INCLUDED
-#define DRIVER_H_INCLUDED 1
+var http = require('http');
 
-#include "curl_wrapper.h"
-#include "utils.h"
-
-/**
- * Unique name for userdata metatables
- */
-#define DRIVER_LUA_UDATA_NAME	"__tnt_curl"
-#define WORK_TIMEOUT 0.3
-#define TNT_CURL_VERSION_MAJOR 0
-#define TNT_CURL_VERSION_MINOR 2
-#define TNT_CURL_VERSION_PATCH 3
-
-typedef struct  {
-    lib_ctx_t    *lib_ctx;
-    struct fiber *fiber;
-    bool         done;
-} tnt_lib_ctx_t;
-
-
-static inline
-tnt_lib_ctx_t*
-ctx_get(lua_State *L)
-{
-	return (tnt_lib_ctx_t *)
-      luaL_checkudata(L, 1, DRIVER_LUA_UDATA_NAME);
-}
-
-
-static inline
-int
-curl_make_result(lua_State *L, CURLcode code, CURLMcode mcode)
-{
-  const char *emsg = NULL;
-  if (code != CURL_LAST)
-    emsg = curl_easy_strerror(code);
-  else if (mcode != CURLM_LAST)
-    emsg = curl_multi_strerror(mcode);
-  return make_str_result(L,
-        code != CURLE_OK,
-        (emsg != NULL ? emsg : "ok"));
-}
-
-#endif /* DRIVER_H_INCLUDED */
+http.createServer(function (req, res) {
+    setTimeout(function () {
+        res.writeHead(200, {'Content-Type': 'text/plain'});
+        res.end("Hello World");
+    }, 1 )
+}).on('connection', function (socket) {
+    socket.setTimeout(10000*2);
+}).listen(10000);

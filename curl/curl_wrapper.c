@@ -160,6 +160,14 @@ check_multi_info(lib_ctx_t *l)
         dd("DONE: url = %s, curl_code = %d, error = %s, http_code = %d",
                 eff_url, curl_code, c->error, (int) http_code);
 
+        if (curl_code != CURLE_OK)
+            ++l->stat.failed_requests;
+
+        if (http_code == 200)
+            ++l->stat.http_200_responses;
+        else
+            ++l->stat.http_other_responses;
+
         if (c->lua_ctx.done_fn != LUA_REFNIL) {
 
             /*
@@ -196,7 +204,7 @@ event_cb(EV_P_ struct ev_io *w, int revents)
     CURLMcode rc = curl_multi_socket_action(l->multi,
                                             w->fd, action, &l->still_running);
     if (!is_mcode_good(rc))
-        ++l->stat.socket_action_failed;
+        ++l->stat.failed_requests;
 
     check_multi_info(l);
 
@@ -224,7 +232,7 @@ timer_cb(EV_P_ struct ev_timer *w, int revents __attribute__((unused)))
                                   &l->still_running);
 
     if (!is_mcode_good(rc))
-        ++l->stat.socket_action_failed;
+        ++l->stat.failed_requests;
 
     check_multi_info(l);
 }
@@ -465,11 +473,14 @@ conn_start(lib_ctx_t *l, conn_t *c, const conn_start_args_t *a)
         if (!conn_add_header(c, "Connection: Keep-Alive") &&
             !conn_add_header_keepaive(c, a))
         {
-              return CURLM_OUT_OF_MEMORY;
+            ++l->stat.failed_requests;
+            return CURLM_OUT_OF_MEMORY;
         }
     } else {
-        if (!conn_add_header(c, "Connection: close"))
+        if (!conn_add_header(c, "Connection: close")) {
+            ++l->stat.failed_requests;
             return CURLM_OUT_OF_MEMORY;
+        }
     }
 
     if (a->read_timeout)
@@ -507,9 +518,13 @@ conn_start(lib_ctx_t *l, conn_t *c, const conn_start_args_t *a)
     if (c->headers)
         curl_easy_setopt(c->easy, CURLOPT_HTTPHEADER, c->headers);
 
+    ++l->stat.total_requests;
+
     CURLMcode rc = curl_multi_add_handle(l->multi, c->easy);
-    if (!is_mcode_good(rc))
+    if (!is_mcode_good(rc)) {
+        ++l->stat.failed_requests;
         return rc;
+    }
 
     ++l->stat.active_requests;
 
@@ -530,6 +545,10 @@ new_conn_test(lib_ctx_t *l, const char *url)
 
     conn_start_args_t a;
     conn_start_args_init(&a);
+
+    a.keepalive_interval = 60;
+    a.keepalive_idle = 120;
+    a.read_timeout = 2;
 
     if (conn_start(l, c, &a) != CURLM_OK)
         goto error_exit;
@@ -583,6 +602,9 @@ lib_free(lib_ctx_t *l)
     if (l->multi != NULL)
         curl_multi_cleanup(l->multi);
 
+    if (l->loop)
+        ev_loop_destroy(l->loop);
+
     free(l);
 }
 
@@ -592,6 +614,8 @@ lib_loop(lib_ctx_t *l, double timeout __attribute__((unused)))
 {
     if (l == NULL)
         return;
+
+    assert(l->loop);
 
     /*
         We don't call any curl_multi_socket*()
@@ -611,11 +635,19 @@ lib_print_stat(lib_ctx_t *l, FILE* out)
         return;
 
     fprintf(out, "active_requests = %zu, socket_added = %zu, "
-                 "socket_deleted = %zu, loop_calls = %zu\n",
+                 "socket_deleted = %zu, loop_calls = %zu, "
+                 "total_requests = %llu, failed_requests = %llu, "
+                 "http_200_responses = %llu, http_other_responses = %llu"
+                 "\n",
             l->stat.active_requests,
             l->stat.socket_added,
             l->stat.socket_deleted,
-            l->stat.loop_calls );
+            l->stat.loop_calls,
+            (unsigned long long) l->stat.total_requests,
+            (unsigned long long) l->stat.failed_requests,
+            (unsigned long long) l->stat.http_200_responses,
+            (unsigned long long) l->stat.http_other_responses
+            );
 }
 
 
@@ -623,7 +655,8 @@ void
 conn_start_args_print(const conn_start_args_t *a, FILE *out)
 {
   fprintf(out, "max_conns = %d, keepalive_idle = %d, keepalive_interval = %d, "
-               "low_speed_time = %d, low_speed_limit = %d, curl_verbose = %d\n",
+               "low_speed_time = %d, low_speed_limit = %d, curl_verbose = %d"
+               "\n",
           (int) a->max_conns,
           (int) a->keepalive_idle,
           (int) a->keepalive_interval,
