@@ -25,5 +25,6 @@ run(false, 'Issus https://github.com/tarantool/curl/issues/3', function()
   if resp.code ~= 200 then
     error('Expects 200 and ', data)
   end
+  http:free()
   return true
 end)

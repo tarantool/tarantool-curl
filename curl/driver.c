@@ -29,472 +29,374 @@
  * SUCH DAMAGE.
  */
 
-#include <lua.h>
-#include <lualib.h>
-#include <lauxlib.h>
-#include <stdarg.h>
-#include <sys/epoll.h>
-#include <unistd.h>
-
 #include "driver.h"
-
-//#define MY_DEBUG 1
-#include "debug.h"
-
-struct easy_ctx
-{
-  lua_State *L;
-  int read_fn;
-  int write_fn;
-  int done_fn;
-  int fn_ctx;
-
-  struct curl_slist *headers;
-};
 
 
 static
-void
-check_multi_info(curl_t *ctx)
+int
+curl_ev_f(va_list ap)
 {
-  CURLMsg *msg;
-  int msgs_left;
+    tnt_lib_ctx_t *ctx = va_arg(ap, tnt_lib_ctx_t *);
 
-  while ((msg = curl_multi_info_read(ctx->multi, &msgs_left))) {
+    fiber_set_cancellable(true);
 
-    if (msg->msg == CURLMSG_DONE) {
-
-      dd("curl has new messages, messagess processing has started");
-
-      CURL *easy = msg->easy_handle;
-      CURLcode res = msg->data.result;
-      curl_multi_remove_handle(ctx->multi, easy);
-
-      struct easy_ctx *easy_ctx;
-      curl_easy_getinfo(easy, CURLINFO_PRIVATE, &easy_ctx);
-
-      if (easy_ctx->done_fn != LUA_REFNIL) {
-
-        dd("the done callback is calling");
-
-        lua_rawgeti(easy_ctx->L, LUA_REGISTRYINDEX,
-                    easy_ctx->done_fn);
-        long response_code;
-        curl_easy_getinfo(easy, CURLINFO_RESPONSE_CODE,
-                          &response_code);
-        lua_pushinteger(easy_ctx->L, res);
-        if (res)
-          lua_pushstring(easy_ctx->L, curl_easy_strerror(res));
-        else
-          lua_pushinteger(easy_ctx->L, response_code);
-        lua_rawgeti(easy_ctx->L, LUA_REGISTRYINDEX, easy_ctx->fn_ctx);
-        lua_pcall(easy_ctx->L, 3, 0 ,0);
-      }
-
-      luaL_unref(easy_ctx->L, LUA_REGISTRYINDEX, easy_ctx->read_fn);
-      luaL_unref(easy_ctx->L, LUA_REGISTRYINDEX, easy_ctx->write_fn);
-      luaL_unref(easy_ctx->L, LUA_REGISTRYINDEX, easy_ctx->done_fn);
-      luaL_unref(easy_ctx->L, LUA_REGISTRYINDEX, easy_ctx->fn_ctx);
-
-      if (easy_ctx->headers)
-        curl_slist_free_all(easy_ctx->headers);
-
-      curl_easy_cleanup(easy);
-
-      free(easy_ctx);
-    } /* msg done */
-  } /* while */
-}
-
-
-static int
-io_f(va_list ap)
-{
-  static const double sleeping_timeout =
-#if defined (MY_DEBUG)
-    0.2
-#else
-    0.01
-#endif
-    ;
-  curl_t *ctx = va_arg(ap, curl_t *);
-
-  fiber_set_cancellable(true);
-
-  for (struct epoll_event events[10]; ctx->need_work;) {
-
-    int rc = epoll_wait(ctx->epollfd, events, 10, 0);
-    for (int i = 0; i < rc; ++i) {
-      int mask = events[i].events & EPOLLIN ? CURL_POLL_IN : 0 |
-                 events[i].events & EPOLLOUT ? CURL_POLL_OUT : 0;
-      dd("events are processing on sfd:%d, mask:%d", events[i].data.fd, mask);
-      curl_multi_socket_action(ctx->multi, events[i].data.fd, mask,
-                               &ctx->still_running);
+    for (;;) {
+        if (ctx->done)
+            break;
+        lib_loop(ctx->lib_ctx, 0.1);
+        fiber_sleep(0.1);
     }
 
-    curl_multi_socket_action(ctx->multi, CURL_SOCKET_TIMEOUT, 0,
-                             &ctx->still_running);
-    check_multi_info(ctx);
+    /** Finishing all requests
+     */
+    for (;;) {
+        if (ctx->lib_ctx->stat.active_requests == 0)
+            break;
+        lib_loop(ctx->lib_ctx, 1);
+        fiber_sleep(0.1);
+    }
 
-    if (rc <= 0)
-      fiber_sleep(sleeping_timeout);
-  }
-
-  return 0;
-}
-
-
-static size_t
-read_cb(void *ptr, size_t size, size_t nmemb, struct easy_ctx *easy_ctx)
-{
-  size_t total_size = size * nmemb;
-
-  dd("read_cb is calling size:%zu, nmemb:%zu", size, nmemb);
-
-  if (!easy_ctx->read_fn)
-    return total_size;
-
-  lua_rawgeti(easy_ctx->L, LUA_REGISTRYINDEX, easy_ctx->read_fn);
-  lua_pushnumber(easy_ctx->L, total_size);
-  lua_rawgeti(easy_ctx->L, LUA_REGISTRYINDEX, easy_ctx->fn_ctx);
-  lua_pcall(easy_ctx->L, 2, 1, 0);
-  size_t readen;
-  const char *data = lua_tolstring(easy_ctx->L, lua_gettop(easy_ctx->L),
-                                   &readen);
-  memcpy(ptr, data, readen);
-  lua_pop(easy_ctx->L, 1);
-  return readen;
-}
-
-
-static size_t
-write_cb(void *ptr, size_t size, size_t nmemb, struct easy_ctx *easy_ctx)
-{
-  dd("write_cb is calling size:%zu, nmemb:%zu", size, nmemb);
-
-  size_t bytes = size * nmemb;
-
-  if (!easy_ctx->write_fn)
-    return bytes;
-
-  lua_rawgeti(easy_ctx->L, LUA_REGISTRYINDEX, easy_ctx->write_fn);
-  lua_pushlstring(easy_ctx->L, ptr, bytes);
-  lua_rawgeti(easy_ctx->L, LUA_REGISTRYINDEX, easy_ctx->fn_ctx);
-  lua_pcall(easy_ctx->L, 2, 1, 0);
-  size_t written = lua_tointeger(easy_ctx->L, lua_gettop(easy_ctx->L));
-  lua_pop(easy_ctx->L, 1);
-  return written;
+    return 0;
 }
 
 
 /*
  */
-static int
-async_request(lua_State *L)
+static
+int
+tnt_lib_async_request(lua_State *L)
 {
-  const char *reason = "unknown error";
+    const char *reason = "unknown error";
 
-  /* FIXME: check number and type of input arguments */
-  CURL *easy = NULL;
-  struct easy_ctx *easy_ctx = NULL;
+    tnt_lib_ctx_t *ctx = ctx_get(L);
+    if (ctx == NULL)
+        return luaL_error(L, "can't get lib ctx");
 
-  curl_t *ctx = curl_get(L);
-  const char *method = luaL_checkstring(L, 2);
-  const char *url = luaL_checkstring(L, 3);
+    if (ctx->done)
+        return luaL_error(L, "curl stopped");
 
-  easy = curl_easy_init();
-  if (!easy)
-    return luaL_error(L, "curl_easy_init failed!");
+    conn_t *c = new_conn(ctx->lib_ctx);
+    if (c == NULL)
+        return luaL_error(L, "can't allocate conn_t");
 
-  easy_ctx = (struct easy_ctx *)malloc(sizeof(struct easy_ctx));
-  if (!easy_ctx) {
-    reason = "can't allocate memry (easy_ctx)";
-    goto err;
-  }
-  memset(easy_ctx, 0, sizeof(struct easy_ctx));
+    conn_start_args_t conn_args;
+    conn_start_args_init(&conn_args);
 
-  easy_ctx->L = L;
+    const char *method = luaL_checkstring(L, 2);
+    const char *url    = luaL_checkstring(L, 3);
 
-  if (lua_istable(L, 4)) {
-    int top = lua_gettop(L);
-    /* FIXME: push string can fail, use safe version */
-    lua_pushstring(L, "read");
-    lua_gettable(L, 4);
-    if (lua_isfunction(L, top + 1)) {
-      easy_ctx->read_fn = luaL_ref(L, LUA_REGISTRYINDEX);
-    } else {
-      easy_ctx->read_fn = LUA_REFNIL;
-      lua_pop(L, 1);
-    }
+    /** Set Options {{{
+     */
+    if (lua_istable(L, 4)) {
+        const int top = lua_gettop(L);
 
-    lua_pushstring(L, "write");
-    lua_gettable(L, 4);
-    if (lua_isfunction(L, top + 1)) {
-      easy_ctx->write_fn = luaL_ref(L, LUA_REGISTRYINDEX);
-    } else {
-      easy_ctx->write_fn = LUA_REFNIL;
-      lua_pop(L, 1);
-    }
+        c->lua_ctx.L = L;
 
-    lua_pushstring(L, "done");
-    lua_gettable(L, 4);
-    if (lua_isfunction(L, top + 1)) {
-      easy_ctx->done_fn = luaL_ref(L, LUA_REGISTRYINDEX);
-    } else {
-      easy_ctx->done_fn = LUA_REFNIL;
-      lua_pop(L, 1);
-    }
+        /* Read callback */
+        lua_pushstring(L, "read");
+        lua_gettable(L, 4);
+        if (lua_isfunction(L, top + 1)) {
+            c->lua_ctx.read_fn = luaL_ref(L, LUA_REGISTRYINDEX);
+        } else
+            lua_pop(L, 1);
 
-    lua_pushstring(L, "ctx");
-    lua_gettable(L, 4);
-    easy_ctx->fn_ctx = luaL_ref(L, LUA_REGISTRYINDEX);
+        /* Write callback */
+        lua_pushstring(L, "write");
+        lua_gettable(L, 4);
+        if (lua_isfunction(L, top + 1)) {
+            c->lua_ctx.write_fn = luaL_ref(L, LUA_REGISTRYINDEX);
+        } else
+            lua_pop(L, 1);
 
-    lua_pushstring(L, "headers");
-    lua_gettable(L, 4);
-    if (!lua_isnil(L, top + 1)) {
-      lua_pushnil(L);
-      while (lua_next(L, -2) != 0) {
-        char header[4096];
-        snprintf(header, 4096, "%s: %s", lua_tostring(L, -2),
-                                         lua_tostring(L, -1));
-        easy_ctx->headers = curl_slist_append(easy_ctx->headers, header);
-        if (!easy_ctx->headers) {
-          reason = "can't allocate memry (curl_slist_append)";
-          goto err;
+        /* Done callback */
+        lua_pushstring(L, "done");
+        lua_gettable(L, 4);
+        if (lua_isfunction(L, top + 1)) {
+            c->lua_ctx.done_fn = luaL_ref(L, LUA_REGISTRYINDEX);
+        } else
+            lua_pop(L, 1);
+
+        /* callback's context */
+        lua_pushstring(L, "ctx");
+        lua_gettable(L, 4);
+        c->lua_ctx.fn_ctx = luaL_ref(L, LUA_REGISTRYINDEX);
+
+        /** Http headers */
+        lua_pushstring(L, "headers");
+        lua_gettable(L, 4);
+        if (!lua_isnil(L, top + 1)) {
+            lua_pushnil(L);
+            char header[4096];
+            while (lua_next(L, -2) != 0) {
+                snprintf(header, sizeof(header) - 1,
+                        "%s: %s", lua_tostring(L, -2), lua_tostring(L, -1));
+                if (!conn_add_header(c, header)) {
+                    reason = "can't allocate memory (conn_add_header)";
+                    goto error_exit;
+                }
+                lua_pop(L, 1);
+            } // while
         }
         lua_pop(L, 1);
-      }
+
+        /* SSL/TLS cert  {{{ */
+        lua_pushstring(L, "ca_path");
+        lua_gettable(L, 4);
+        if (!lua_isnil(L, top + 1))
+            curl_easy_setopt(c->easy, CURLOPT_CAPATH,
+                             lua_tostring(L, top + 1));
+        lua_pop(L, 1);
+
+        lua_pushstring(L, "ca_file");
+        lua_gettable(L, 4);
+        if (!lua_isnil(L, top + 1))
+          curl_easy_setopt(c->easy, CURLOPT_CAINFO,
+                           lua_tostring(L, top + 1));
+        lua_pop(L, 1);
+        /* }}} */
+
+        lua_pushstring(L, "max_conns");
+        lua_gettable(L, 4);
+        if (!lua_isnil(L, top + 1))
+          conn_args.max_conns = (long) lua_tointeger(L, top + 1);
+        lua_pop(L, 1);
+
+        lua_pushstring(L, "keepalive_idle");
+        lua_gettable(L, 4);
+        if (!lua_isnil(L, top + 1))
+          conn_args.keepalive_idle = (long) lua_tointeger(L, top + 1);
+        lua_pop(L, 1);
+
+        lua_pushstring(L, "keepalive_interval");
+        lua_gettable(L, 4);
+        if (!lua_isnil(L, top + 1))
+          conn_args.keepalive_interval = (long) lua_tointeger(L, top + 1);
+        lua_pop(L, 1);
+
+        lua_pushstring(L, "low_speed_limit");
+        lua_gettable(L, 4);
+        if (!lua_isnil(L, top + 1))
+          conn_args.low_speed_limit = (long) lua_tointeger(L, top + 1);
+        lua_pop(L, 1);
+
+        lua_pushstring(L, "low_speed_time");
+        lua_gettable(L, 4);
+        if (!lua_isnil(L, top + 1))
+          conn_args.low_speed_time = (long) lua_tointeger(L, top + 1);
+        lua_pop(L, 1);
+
+        lua_pushstring(L, "read_timeout");
+        lua_gettable(L, 4);
+        if (!lua_isnil(L, top + 1))
+          conn_args.read_timeout = (long) lua_tointeger(L, top + 1);
+        lua_pop(L, 1);
+
+        lua_pushstring(L, "connect_timeout");
+        lua_gettable(L, 4);
+        if (!lua_isnil(L, top + 1))
+          conn_args.connect_timeout = (long) lua_tointeger(L, top + 1);
+        lua_pop(L, 1);
+
+        lua_pushstring(L, "dns_cache_timeout");
+        lua_gettable(L, 4);
+        if (!lua_isnil(L, top + 1))
+          conn_args.dns_cache_timeout = (long) lua_tointeger(L, top + 1);
+        lua_pop(L, 1);
+
+        /* Debug- / Internal- options */
+        lua_pushstring(L, "curl_verbose");
+        lua_gettable(L, 4);
+        if (!lua_isnil(L, top + 1) && lua_isboolean(L, top + 1))
+          conn_args.curl_verbose = true;
+        lua_pop(L, 1);
     }
-    lua_pop(L, 1);
+    /* }}} */
 
-    lua_pushstring(L, "ca_path");
-    lua_gettable(L, 4);
-    if (!lua_isnil(L, top + 1))
-      curl_easy_setopt(easy, CURLOPT_CAPATH, lua_tostring(L, top + 1));
-    lua_pop(L, 1);
+    curl_easy_setopt(c->easy, CURLOPT_PRIVATE, (void *)c);
 
-    lua_pushstring(L, "ca_file");
-    lua_gettable(L, 4);
-    if (!lua_isnil(L, top + 1))
-      curl_easy_setopt(easy, CURLOPT_CAINFO, lua_tostring(L, top + 1));
-    lua_pop(L, 1);
+    curl_easy_setopt(c->easy, CURLOPT_URL, url);
+    curl_easy_setopt(c->easy, CURLOPT_FOLLOWLOCATION, 1);
 
-    lua_pushstring(L, "verbose");
-    lua_gettable(L, 4);
-    if (!lua_isnil(L, top + 1))
-      curl_easy_setopt(easy, CURLOPT_VERBOSE, lua_tonumber(L, top + 1));
-    lua_pop(L, 1);
-  }
+    curl_easy_setopt(c->easy, CURLOPT_SSL_VERIFYPEER, 1);
 
-  curl_easy_setopt(easy, CURLOPT_PRIVATE, easy_ctx);
+    /* Method {{{ */
 
-  curl_easy_setopt(easy, CURLOPT_URL, url);
-  curl_easy_setopt(easy, CURLOPT_FOLLOWLOCATION, 1);
-
-  curl_easy_setopt(easy, CURLOPT_READFUNCTION, read_cb);
-  curl_easy_setopt(easy, CURLOPT_READDATA, easy_ctx);
-
-  curl_easy_setopt(easy, CURLOPT_WRITEFUNCTION, write_cb);
-  curl_easy_setopt(easy, CURLOPT_WRITEDATA, easy_ctx);
-
-  curl_easy_setopt(easy, CURLOPT_SSL_VERIFYPEER, 1);
-
-  curl_easy_setopt(easy, CURLOPT_NOPROGRESS, 1);
-
-  if (!strcmp(method, "POST")) {
-    easy_ctx->headers = curl_slist_append(easy_ctx->headers, "Accept: */*");
-    if (!easy_ctx->headers) {
-      reason = "can't allocate memory (curl_slist_append)";
-      goto err;
+    if (*method == 'G') {
+      curl_easy_setopt(c->easy, CURLOPT_HTTPGET, 1);
     }
-    curl_easy_setopt(easy, CURLOPT_POST, 1);
-  } else if (!strcmp(method, "PUT")) {
-    easy_ctx->headers = curl_slist_append(easy_ctx->headers, "Accept: */*");
-    if (!easy_ctx->headers) {
-      reason = "can't allocate memory (curl_slist_append)";
-      goto err;
+    else if (strcmp(method, "POST") == 0) {
+        if (!conn_set_post(c)) {
+            reason = "can't allocate memory (conn_set_post)";
+            goto error_exit;
+        }
     }
-    curl_easy_setopt(easy, CURLOPT_UPLOAD, 1);
-  } else if (!strcmp(method, "DELETE")) {
-    /* FIXME: Do a custom rquest */
-  } else if (!strcmp(method, "GET")) {
-    curl_easy_setopt(easy, CURLOPT_HTTPGET, 1);
-  } else {
-    /* FIXME: */
-  }
+    else if (strcmp(method, "PUT") == 0) {
+        if (!conn_set_put(c)) {
+            reason = "can't allocate memory (conn_set_put)";
+            goto error_exit;
+        }
+    } else {
+        reason = "method does not supported";
+        goto error_exit;
+    }
+    /* }}} */
 
-  if (easy_ctx->headers)
-    curl_easy_setopt(easy, CURLOPT_HTTPHEADER, easy_ctx->headers);
-
-  return curl_make_result(L,
-    CURL_LAST,
     /* Note that the add_handle() will set a
      * time-out to trigger very soon so that
-     * the necessary socket_action() call will be called
-     * by this app */
-    curl_multi_add_handle(ctx->multi, easy));
+     * the necessary socket_action() call will be
+     * called by this app */
+    CURLMcode rc = conn_start(ctx->lib_ctx, c, &conn_args);
+    if (rc != CURLM_OK)
+        goto error_exit;
 
-err:
-  if (easy_ctx->headers)
-    curl_slist_free_all(easy_ctx->headers);
-  if (easy_ctx)
-    free(easy_ctx);
-  if (easy)
-    curl_easy_cleanup(easy);
-  return luaL_error(L, reason);
+    return curl_make_result(L, CURL_LAST, rc);
+error_exit:
+    if (c)
+        free_conn(c);
+    return luaL_error(L, reason);
 }
 
 
-
-/**
- * Lib functions
- */
-
 static
 int
-lib_version(lua_State *L)
+tnt_lib_stat(lua_State *L)
 {
-  char version[sizeof("xxx.xxx.xxx-xx.xx")];
+    tnt_lib_ctx_t *ctx = ctx_get(L);
+    if (ctx == NULL)
+        return luaL_error(L, "can't get lib ctx");
 
-  snprintf(version, sizeof(version),
-            "%i.%i.%i-%i.%i",
+    lib_ctx_t *l = ctx->lib_ctx;
+    if (l == NULL)
+        return luaL_error(L, "it doesn't initialized");
+
+    lua_newtable(L);
+
+    lua_pushstring(L, "active_requests");
+    lua_pushinteger(L, l->stat.active_requests);
+    lua_settable(L, -3);  /* 3rd element from the stack top */
+
+    lua_pushstring(L, "socket_added");
+    lua_pushinteger(L, l->stat.socket_added);
+    lua_settable(L, -3);
+
+    lua_pushstring(L, "socket_deleted");
+    lua_pushinteger(L, l->stat.socket_deleted);
+    lua_settable(L, -3);
+
+    lua_pushstring(L, "loop_calls");
+    lua_pushinteger(L, l->stat.loop_calls);
+    lua_settable(L, -3);
+
+    lua_pushstring(L, "socket_action_failed");
+    lua_pushinteger(L, l->stat.socket_action_failed);
+    lua_settable(L, -3);
+
+    return 1;
+}
+
+
+/** Lib functions {{{
+ */
+static
+int
+tnt_lib_version(lua_State *L)
+{
+  char version[sizeof("tarantool.curl: xxx.xxx.xxx") +
+               sizeof("curl: xxx.xxx.xxx,") +
+               sizeof("libev: xxx.xxx") ];
+
+  snprintf(version, sizeof(version) - 1,
+            "tarantool.curl: %i.%i.%i, curl: %i.%i.%i, libev: %i.%i",
+            TNT_CURL_VERSION_MAJOR,
+            TNT_CURL_VERSION_MINOR,
+            TNT_CURL_VERSION_PATCH,
+
             LIBCURL_VERSION_MAJOR,
             LIBCURL_VERSION_MINOR,
             LIBCURL_VERSION_PATCH,
-            0,
-            1);
+
+            EV_VERSION_MAJOR,
+            EV_VERSION_MINOR );
 
   return make_str_result(L, true, version);
 }
 
 
+/** lib API {{{
+ */
+
+static void tnt_lib_free_(tnt_lib_ctx_t *ctx);
+
 static
 int
-sock_cb(CURL *easy,
-        curl_socket_t sfd,
-        int what,
-        curl_t *ctx,
-        struct epoll_event *event)
+tnt_lib_new(lua_State *L)
 {
-  (void)easy;
-  bool epoll_new = false;
+    const char *reason = "unknown error";
 
-  switch (what) {
-  case CURL_POLL_IN:
-  case CURL_POLL_OUT:
-  case CURL_POLL_INOUT:
-    if (!event) {
-      epoll_new = true;
-      event = (struct epoll_event *)calloc(1, sizeof(struct epoll_event));
-      if (!event)
-        goto err;
-      curl_multi_assign(ctx->multi, sfd, event);
+    tnt_lib_ctx_t *ctx = (tnt_lib_ctx_t *)
+            lua_newuserdata(L, sizeof(tnt_lib_ctx_t));
+    if (ctx == NULL)
+        return luaL_error(L, "lua_newuserdata failed: tnt_lib_ctx_t");
+
+    ctx->lib_ctx = NULL;
+    ctx->fiber   = NULL;
+    ctx->done    = false;
+
+    ctx->lib_ctx = lib_new();
+    if (ctx->lib_ctx == NULL) {
+        reason = "lib_new failed";
+        goto error_exit;
     }
-    event->data.fd = sfd;
-    event->events = what & CURL_POLL_IN ? EPOLLIN : 0 |
-                    what & CURL_POLL_OUT ? EPOLLOUT : 0;
-    if (-1 == epoll_ctl(ctx->epollfd, epoll_new ? EPOLL_CTL_ADD : EPOLL_CTL_MOD,
-                  sfd,
-                  event))
-    {
-      goto err;
+
+    ctx->fiber = fiber_new("__curl_ev_fiber", curl_ev_f);
+    if (ctx->fiber == NULL) {
+        reason = "can't create new fiber: __curl_ev_fiber";
+        goto error_exit;
     }
-    break;
-  case CURL_POLL_REMOVE:
-    if (epoll_ctl(ctx->epollfd, EPOLL_CTL_DEL, sfd, NULL) == -1)
-      goto err;
-    curl_multi_assign(ctx->multi, sfd, NULL);
-    if (event)
-      free(event);
-    break;
-  }
 
-  return 0;
+    /* Run fibers */
+    fiber_set_joinable(ctx->fiber, true);
+    fiber_start(ctx->fiber, (void *) ctx);
 
-err:
-  curl_multi_assign(ctx->multi, sfd, NULL);
-  epoll_ctl(ctx->epollfd, EPOLL_CTL_DEL, sfd, NULL);
-  if (event)
-      free(event);
-  return 1;
+    luaL_getmetatable(L, DRIVER_LUA_UDATA_NAME);
+    lua_setmetatable(L, -2);
+
+    return 1;
+
+error_exit:
+    tnt_lib_free_(ctx);
+    return luaL_error(L, reason);
+}
+
+
+static
+void
+tnt_lib_free_(tnt_lib_ctx_t *ctx)
+{
+    assert(ctx);
+
+    ctx->done = true;
+
+    if (ctx->fiber)
+        fiber_join(ctx->fiber);
+
+    if (ctx->lib_ctx)
+        lib_free(ctx->lib_ctx);
 }
 
 
 static
 int
-lib_new(lua_State *L)
+tnt_lib_free(lua_State *L)
 {
-  const char *reason = "unknown error";
+    tnt_lib_free_(ctx_get(L));
 
-  curl_t *ctx = (curl_t *) lua_newuserdata(L, sizeof(curl_t));
-  if (!ctx)
-    return luaL_error(L, "lua_newuserdata failed!");
+    /* remove all methods operating on ctx */
+    lua_newtable(L);
+    lua_setmetatable(L, -2);
 
-  memset(ctx, 0, sizeof(curl_t));
-  ctx->epollfd = epoll_create(1);
-
-  ctx->multi = curl_multi_init();
-  if (!ctx->multi) {
-    reason = "can't create 'multi'";
-    goto error;
-  }
-
-  ctx->io_fiber = fiber_new("__curl_io_fiber", io_f);
-  if (!ctx->io_fiber) {
-    reason = "can't create new fiber: __curl_io_fiber";
-    goto error;
-  }
-
-  curl_multi_setopt(ctx->multi, CURLMOPT_SOCKETFUNCTION, sock_cb);
-  curl_multi_setopt(ctx->multi, CURLMOPT_SOCKETDATA, ctx);
-
-  ctx->need_work = true;
-
-  /* Run fibers */
-  fiber_set_joinable(ctx->io_fiber, true);
-  fiber_start(ctx->io_fiber, ctx);
-
-  luaL_getmetatable(L, DRIVER_LUA_UDATA_NAME);
-  lua_setmetatable(L, -2);
-
-  ctx->L = L;
-
-  return 1;
-
-error:
-  if (ctx->multi)
-    curl_multi_cleanup(ctx->multi);
-  if (ctx->io_fiber)
-    fiber_cancel(ctx->io_fiber);
-  if (ctx->epollfd)
-    close(ctx->epollfd);
-  return luaL_error(L, reason);
+    return make_int_result(L, true, 0);
 }
-
-
-static
-int
-curl_destroy(lua_State *L)
-{
-  curl_t *ctx = curl_get(L);
-
-  ctx->need_work = false;
-
-  if (ctx->fiber) {
-    fiber_cancel(ctx->fiber);
-    fiber_join(ctx->fiber);
-  }
-
-  if (ctx->multi)
-    curl_multi_cleanup(ctx->multi);
-
-  /* remove all methods operating on ctx */
-  lua_newtable(L);
-  lua_setmetatable(L, -2);
-
-  return make_int_result(L, true, 0);
-}
-
 
 
 /*
@@ -502,24 +404,18 @@ curl_destroy(lua_State *L)
  */
 
 static const struct luaL_Reg R[] = {
-  {"version", lib_version},
-  {"new",     lib_new},
-
-  {NULL,      NULL}
+    {"version", tnt_lib_version},
+    {"new",     tnt_lib_new},
+    {NULL,      NULL}
 };
 
 static const struct luaL_Reg M[] = {
-
-  {"destroy", curl_destroy},
-  {"__gc",    curl_destroy},
-  {"async_request", async_request},
-
-  {NULL,    NULL}
+    {"async_request", tnt_lib_async_request},
+    {"stat",          tnt_lib_stat},
+    {"free",          tnt_lib_free},
+    {"__gc",          tnt_lib_free},
+    {NULL,            NULL}
 };
-
-/*
- * ]]
- */
 
 
 /*
@@ -529,19 +425,14 @@ LUA_API
 int
 luaopen_curl_driver(lua_State *L)
 {
-  /**
-   * Add metatable.__index = metatable
-   */
-  luaL_newmetatable(L, DRIVER_LUA_UDATA_NAME);
-  lua_pushvalue(L, -1);
-  lua_setfield(L, -2, "__index");
-  luaL_register(L, NULL, M);
-  luaL_register(L, NULL, R);
+    /*
+        Add metatable.__index = metatable
+    */
+    luaL_newmetatable(L, DRIVER_LUA_UDATA_NAME);
+    lua_pushvalue(L, -1);
+    lua_setfield(L, -2, "__index");
+    luaL_register(L, NULL, M);
+    luaL_register(L, NULL, R);
 
-  /**
-   * Add definitions
-   */
-  //register_defs(L, main_defs);
-
-  return 1;
+    return 1;
 }

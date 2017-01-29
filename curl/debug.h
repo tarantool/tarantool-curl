@@ -28,17 +28,21 @@
  * THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
  * SUCH DAMAGE.
  *
- * Copyright (C) 2015-2016 Tarantool AUTHORS:
+ * Copyright (C) 2016-2017 Tarantool AUTHORS:
  * please see AUTHORS file.
  */
 
-#ifndef DEBUG_UTILS_H
-#define DEBUG_UTILS_H 1
+#ifndef DEBUG_UTILS_H_INCLUDED
+#define DEBUG_UTILS_H_INCLUDED 1
 
+#include <assert.h>
+#include <errno.h>
+
+//#define MY_DEBUG 1
 #if defined(MY_DEBUG)
 
 # define dd(...) do { \
-        fprintf(stderr, "tnt *** "); \
+        fprintf(stderr, "tnt *** %s ", __PRETTY_FUNCTION__); \
         fprintf(stderr, __VA_ARGS__); \
         fprintf(stderr, " at %s line %d.\n", __FILE__, __LINE__); \
       } while(0)
@@ -47,4 +51,4 @@
 # define dd(...)
 #endif /* MY_DEBUG */
 
-#endif
+#endif /* DEBUG_UTILS_H_INCLUDED */

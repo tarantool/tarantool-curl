@@ -29,8 +29,8 @@
  * SUCH DAMAGE.
  */
 
-#ifndef DRIVER_UTILS_H
-#define DRIVER_UTILS_H 1
+#ifndef DRIVER_UTILS_H_INCLUDED
+#define DRIVER_UTILS_H_INCLUDED 1
 
 #include <errno.h>
 #include <string.h>
@@ -71,4 +71,4 @@ make_errorno_result(lua_State *L, int the_errno)
 	return 2;
 }
 
-#endif /* DRIVER_UTILS_H */
+#endif /* DRIVER_UTILS_H_INCLUDED */

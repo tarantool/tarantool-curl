@@ -29,49 +29,48 @@
  * SUCH DAMAGE.
  */
 
-#ifndef DRIVER_H_INCLUDED
-#define DRIVER_H_INCLUDED 1
-
+#include <stdio.h>
 #include "curl_wrapper.h"
-#include "utils.h"
 
-/**
- * Unique name for userdata metatables
- */
-#define DRIVER_LUA_UDATA_NAME	"__tnt_curl"
-#define WORK_TIMEOUT 0.3
-#define TNT_CURL_VERSION_MAJOR 0
-#define TNT_CURL_VERSION_MINOR 2
-#define TNT_CURL_VERSION_PATCH 1
-
-typedef struct  {
-    lib_ctx_t    *lib_ctx;
-    struct fiber *fiber;
-    bool         done;
-} tnt_lib_ctx_t;
+#define say_(...) do { \
+    fprintf(stderr, __VA_ARGS__); \
+    fprintf(stderr, "\n"); \
+} while(0)
 
 
 static inline
-tnt_lib_ctx_t*
-ctx_get(lua_State *L)
+void
+basic_features(void)
 {
-	return (tnt_lib_ctx_t *)
-      luaL_checkudata(L, 1, DRIVER_LUA_UDATA_NAME);
+    say_("[+] basic_features");
+
+    lib_ctx_t *l = lib_new();
+
+    bool done = false;
+    for (;;) {
+        if (l->stat.active_requests > 100)
+            done = true;
+        if (!done)
+            new_conn_test(l, "google.com/");
+        lib_loop(l, 0.0);
+        if (done && l->stat.active_requests == 0)
+            break;
+    }
+
+    lib_print_stat(l, stderr);
+
+    assert(l->stat.active_requests == 0);
+    assert(l->stat.socket_deleted == l->stat.socket_added);
+
+    say_("[+] finished");
+
+    lib_free(l);
 }
 
 
-static inline
-int
-curl_make_result(lua_State *L, CURLcode code, CURLMcode mcode)
+int main(int argc __attribute__((unused)),
+         char ** argv __attribute__((unused)))
 {
-  const char *emsg = NULL;
-  if (code != CURL_LAST)
-    emsg = curl_easy_strerror(code);
-  else if (mcode != CURLM_LAST)
-    emsg = curl_multi_strerror(mcode);
-  return make_str_result(L,
-        code != CURLE_OK,
-        (emsg != NULL ? emsg : "ok"));
+    basic_features();
+    return 0;
 }
-
-#endif /* DRIVER_H_INCLUDED */

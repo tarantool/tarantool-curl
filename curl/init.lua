@@ -28,9 +28,10 @@
 --  THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
 --  SUCH DAMAGE.
 --
-local fiber = require('fiber')
+
+local fiber       = require('fiber')
 local curl_driver = require('curl.driver')
-local yaml = require('yaml')
+local yaml        = require('yaml')
 
 local curl_mt
 
@@ -40,22 +41,20 @@ local curl_mt
 --  Returns:
 --     curl object or raise error
 --
-local http = function(VERBOSE)
-  local curl = curl_driver.new()
-  ok, version = curl:version()
+local http = function()
+  curl = curl_driver.new()
+  local ok, version = curl:version()
   if not ok then
-    version = '0.0.1'
+    error("can't get curl:version()")
   end
-  return setmetatable({
-    VERSION = version, -- Str fmt: X.X.X
-    VERBOSE = VERBOSE,
-    curl = curl,
-  }, curl_mt)
+
+  return setmetatable({VERSION     = version,
+                       curl        = curl, },
+                       curl_mt )
 end
 
 --
--- Internal
--- {{
+-- Internal {{{
 local function read_cb(cnt, ctx)
     local res = ctx.readen:sub(1, cnt)
     ctx.readen = ctx.readen:sub(cnt + 1)
@@ -67,15 +66,14 @@ local function write_cb(data, ctx)
     return data:len()
 end
 
-local function done_cb(res, code, ctx)
-    ctx.done = true
-    ctx.res = res
-    ctx.code = code
+local function done_cb(curl_code, http_code, error_message, ctx)
+    ctx.done          = true
+    ctx.http_code     = http_code
+    ctx.curl_code     = curl_code
+    ctx.error_message = error_message
     fiber.wakeup(ctx.fiber)
 end
---
--- }}
---
+-- }}}
 
 --
 --  <async_request> This function does HTTP request
@@ -87,78 +85,98 @@ end
 --    body    - this parameter is optional, you may use it for passing the
 --              body to a server. Like 'My text string!'
 --    options - this is a table of options.
---              ca_path - a path to ssl certificate dir;
---              ca_file - a path to ssl certificate file;
---              headers - a table of HTTP headers;
---              timeout - a deadline of this function execution.
---              If the deadline is expired then this function raise an error.
---              Default is 90 seconds.
---  Returns:
---     {code=NUMBER, body=STRING}
+--              ca_path                             - a path to ssl certificate dir;
+--              ca_file                             - a path to ssl certificate file;
+--              headers                             - a table of HTTP headers;
+--              max_conns                           - max amount of cached alive connections;
+--              keepalive_idle & keepalive_interval - non-universal keepalive knobs (Linux, AIX, HP-UX, more);
+--              low_speed_time & low_speed_limit    - If the download receives less than "low speed limit" bytes/second
+--                                                    during "low speed time" seconds, the operations is aborted.
+--                                                    You could i.e if you have a pretty high speed connection, abort if
+--                                                    it is less than 2000 bytes/sec during 20 seconds;
+--              read_timeout                        - Time-out the read operation after this amount of seconds;
+--              connect_timeout                     - Time-out connect operations after this amount of seconds, if connects are;
+--                                                    OK within this time, then fine... This only aborts the connect phase;
+--              dns_cache_timeout                   - DNS cache timeout;
 --
-local function sync_request(self, method, url, body, options)
+--  Returns:
+--              {code=NUMBER, body=STRING}
+--
+local function sync_request(self, method, url, body, opts)
 
-    options = options or {}
+    if not method or not url then
+        error("sync_request expects (method, url, ...)")
+    end
 
-    local ctx = {
-        done = false,
-        fiber = fiber.self(),
-        written = '',
-        readen = body or '',
-    }
+    opts = opts or {}
 
-    local headers = options.headers or {}
+    local ctx = {done          = false,
+                 http_code     = 0,
+                 curl_code     = 0,
+                 error_message = '',
+                 fiber         = fiber.self(),
+                 written       = '',
+                 readen        = body or '', }
 
-    --
+    local headers = opts.headers or {}
+
     -- I have to set CL since CURL-engine works async
     if body then
         headers['Content-Length'] = body:len()
     end
 
-    self.curl:async_request(method, url, {
-        ca_path = options.ca_path,
-        ca_file = options.ca_file,
-        headers = headers,
-        read = read_cb,
-        write = write_cb,
-        done = done_cb,
-        ctx = ctx
-    })
-
-    while not ctx.done do
-        fiber.sleep(0.001)
+    local ok, emsg = self.curl:async_request(method, url,
+                                  {ca_path            = opts.ca_path,
+                                   ca_file            = opts.ca_file,
+                                   headers            = headers,
+                                   read               = read_cb,
+                                   write              = write_cb,
+                                   done               = done_cb,
+                                   ctx                = ctx,
+                                   max_conns          = opts.max_conns,
+                                   keepalive_idle     = opts.keepalive_idle,
+                                   keepalive_interval = opts.keepalive_interval,
+                                   low_speed_time     = opts.low_speed_time,
+                                   low_speed_limit    = opts.low_speed_limit,
+                                   read_timeout       = opts.read_timeout,
+                                   connect_timeout    = opts.connect_timeout,
+                                   dns_cache_timeout  = opts.dns_cache_timeout,
+                                   curl_verbose       = opts.curl_verbose, } )
+    -- Curl can't add a new request
+    if not ok then
+        error("curl has an internal error, msg = " .. emsg)
     end
-    if ctx.res ~= 0 then
-        return error(ctx.code)
+
+    if opts.read_timeout ~= nil then
+        fiber.sleep(opts.read_timeout)
+    else
+        fiber.sleep(60)
     end
 
-    return {code = ctx.code, body = ctx.written}
+    -- Curl has an internal error
+    if ctx.curl_code ~= 0 then
+        error("curl has an internal error, msg = " .. ctx.error_message)
+    end
+
+    -- Curl did a request and he has a response
+    return {code = ctx.http_code, body = ctx.written}
 end
 
 curl_mt = {
   __index = {
     --
-    --  <async_request> This function does HTTP request
+    --  <request> This function does HTTP request
     --
     --  Parameters:
     --
     --    method  - HTTP method, like GET, POST, PUT and so on
     --    url     - HTTP url, like https://tarantool.org/doc
-    --    options - this is a table of options.
-    --              ca_path - a path to ssl certificate dir;
-    --              ca_file - a path to ssl certificate file;
-    --              headers - a table of HTTP headers.
-    --                        NOTE if you pass a body,
-    --                        then please you have to set Content-Length
-    --                        header!
-    --              curl:async_request(...,)
-    --              timeout - a deadline of this function execution.
-    --              If the deadline is expired then this function raise an error.
-    --              Default is 90 seconds.
-    --              done - a callback function which called only if request has
-    --              completed.
+    --    options - this is a table of options <see async_request>.
+    --
+    --              curl:async_request(...)
+    --
     --              write - a callback. if a server returns some data, then
-    --                      this function was benig called.
+    --                      this function was being called.
     --              Example:
     --                function(data, context)
     --                  context.in_buffer = context.in_buffer .. data
@@ -166,7 +184,7 @@ curl_mt = {
     --                end
     --
     --              read - a callback. if this client have to pass some
-    --                     data to a server, then this function was benig called.
+    --                     data to a server, then this function was beign called.
     --              Example:
     --                function(content_size, context)
     --                  local out_buffer = context.out_buffer
@@ -174,8 +192,9 @@ curl_mt = {
     --                  context.out_buffer = out_buffer:sub(content_size + 1)
     --                  return to_server
     --                end
+    --
     --              done - a callback. if request has completed, then this
-    --              function was being called.
+    --                     function was being called.
     --
     --              ctx - this is a user defined context.
     --  Returns:
@@ -184,36 +203,58 @@ curl_mt = {
     request = function(self, method, url, options)
       local curl = self.curl
       if not method or not url or not options then
-        error('function expects method, url and options')
+        error('request expects (method, url, options)')
       end
       return curl:async_request(method, url, options)
     end,
 
     --
-    -- see <request>
+    -- see <async_request>
     --
     get_request = function(self, url, options)
       return self.curl:async_request('GET', url, options)
     end,
 
     --
-    -- See <sync_request>
+    -- See <async_request>
     --
     sync_request = sync_request,
 
     --
-    -- See <sync_request>
+    -- See <async_request>
     --
     sync_post_request = function(self, url, body, options)
       return sync_request(self, 'POST', url, body, options)
     end,
 
     --
-    -- See <sync_request>
+    -- See <async_request>
+    --
+    sync_put_request = function(self, url, body, options)
+      return sync_request(self, 'PUT', url, body, options)
+    end,
+
+    --
+    -- See <async_request>
     --
     sync_get_request = function(self, url, options)
       return sync_request(self, 'GET', url, '', options)
-    end
+    end,
+
+    --
+    -- This function returns a table with many values of statistic.
+    --
+    stat = function(self)
+      return self.curl:stat()
+    end,
+
+    --
+    -- Should be called at the end of work.
+    -- This function cleans all resources (i.e. destructor).
+    --
+    free = function(self)
+      self.curl:free()
+    end,
   },
 }
 

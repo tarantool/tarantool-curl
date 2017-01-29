@@ -84,25 +84,35 @@ successfully executed an instruction that brought data from the Internet.
 
 ## API reference
 
-The `curl` package contains one component, `http()`, which contains four 
+The `curl` package contains one component, `http()`, which contains following 
 functions:
+
+* `VERSION` -- a version as string
 
 * `request(method, url [, options])` -- Asynchronous data transfer 
   request. See details below.
 
+* `get_request(url [, options])` -- This is the same as `request('GET', 
+  url [, options])`.
+
 * `sync_request(method, url [, body [, options]])` -- This is similar to 
   `request(method, url [, options])` but it is synchronous.
 
-* `get_request(url [, options])` -- This is the same as `request('GET', 
-  url [, options])`.
+* `sync_post_request(url, body [, options])` -- post request
+
+* `sync_put_request(url, body [, options])` -- put request
 
 * `sync_get_request(url [, body [, options]])` -- This is the same as 
   `sync_request('GET', url [, body [, options]])`.
 
+* `stat()` -- This function returns a table with many values of statistic.
+
+* `free` -- Should be called at the end of work.This function cleans all resources (i.e. destructor).
+
 The `request` and `get_request` functions return either (boolean) true, 
 or an error.
 
-The `sync_request` and `sync_get_request` functions return a structured
+The `sync_request` and `sync_get_request` functions return a structured 
 object containing (numeric) code and (string) body, or an error.
 
 The parameters that can go with the operations are:
@@ -128,9 +138,6 @@ The parameters that can go with the operations are:
 
     * `curl:async_request(...,)` - a further call;
 
-    * `timeout` - number of seconds to wait before generating an error
-      (default = 90);
-
     * `ctx` - user-defined context, with a format that openSSL
       recognizes, which is passed to callback functions;
 
@@ -138,7 +145,7 @@ The parameters that can go with the operations are:
       was completed;
 
     * `write` - name of a callback function which is invoked if the
-      server returns data to the client.  
+      server returns data to the client;
       For example, the `write` function might look like this:
       ```lua
       function(data, context)
@@ -146,9 +153,9 @@ The parameters that can go with the operations are:
         return data:len()
       end
       ```
-       
-    * `read` - name of a callback function which is invoked if the 
-      client passes data to the server.  
+
+    * `read` - name of a callback function which is invoked if the
+      client passes data to the server.
       For example, the `read` function might look like this:
       ```lua
       function(content_size, context)
@@ -158,6 +165,21 @@ The parameters that can go with the operations are:
         return to_server`
       end
       ```
+    * `keepalive_idle` & `keepalive_interval` - non-universal keepalive
+      knobs (Linux, AIX, HP-UX, more);
+
+    * `low_speed_time` & `low_speed_limit` - If the download receives
+      less than "low speed limit" bytes/second during "low speed time" seconds,
+      the operations is aborted. You could i.e if you have a pretty high speed
+      connection, abort if it is less than 2000 bytes/sec during 20 seconds;
+
+    * `read_timeout` - Time-out the read operation after this amount of seconds;
+
+    * `connect_timeout` - Time-out connect operations after this amount of
+      seconds, if connects are; OK within this time,
+      then fine... This only aborts the connect phase;
+
+    * `dns_cache_timeout` - DNS cache timeout;
 
 ## Example function
 
