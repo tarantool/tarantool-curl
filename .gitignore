@@ -17,3 +17,4 @@ install_manifest.txt
 *.xlog*
 *~
 .gdb_history
+*.old
