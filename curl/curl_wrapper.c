@@ -508,6 +508,8 @@ conn_start(lib_ctx_t *l, conn_t *c, const conn_start_args_t *a)
 
     curl_easy_setopt(c->easy, CURLOPT_NOPROGRESS, 1L);
 
+    curl_easy_setopt(c->easy, CURLOPT_HTTP_VERSION, CURL_HTTP_VERSION_1_1);
+
     if (a->low_speed_time > 0)
         curl_easy_setopt(c->easy, CURLOPT_LOW_SPEED_TIME, a->low_speed_time);
 
@@ -570,7 +572,7 @@ lib_new(void)
 
     memset(l, 0, sizeof(lib_ctx_t));
 
-    l->loop = ev_default_loop(0);
+    l->loop = ev_loop_new(0);
 
     l->multi = curl_multi_init();
     if (l->multi == NULL)
@@ -584,6 +586,8 @@ lib_new(void)
 
     curl_multi_setopt(l->multi, CURLMOPT_TIMERFUNCTION, multi_timer_cb);
     curl_multi_setopt(l->multi, CURLMOPT_TIMERDATA, (void *) l);
+
+    curl_multi_setopt(l->multi, CURLMOPT_PIPELINING, 1L /* pipline on */);
 
     return l;
 
