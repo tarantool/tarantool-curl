@@ -192,7 +192,7 @@ In this example, we define a function named `d()` and make three GET requests:
 http = require('curl').http()
 function d() print('done') end
 result=http:request('GET','mail.ru',{done=d()})
-result=http:sync_request('GET','mail.ru','',{timeout=1,done=d())})
+result=http:sync_request('GET','mail.ru','',{read_timeout=1,done=d())})
 result=http:sync_get_request('http://mail.ru/page1')
 ```
 
