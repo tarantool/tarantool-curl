@@ -11,7 +11,7 @@ BuildRequires: gcc >= 4.5
 BuildRequires: libcurl-devel
 BuildRequires: tarantool-devel >= 1.6.8.0
 BuildRequires: /usr/bin/prove
-Requires: tarantool >= 1.6.8.0
+Requires: tarantool >= 1.6.8.0, libev, libev-devel
 
 %description
 This package provides a Curl based HTTP client for Tarantool.
