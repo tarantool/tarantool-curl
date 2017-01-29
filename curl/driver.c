@@ -43,8 +43,8 @@ curl_ev_f(va_list ap)
     for (;;) {
         if (ctx->done)
             break;
-        lib_loop(ctx->lib_ctx, 0.1);
-        fiber_sleep(0.1);
+        lib_loop(ctx->lib_ctx, 0.0);
+        fiber_sleep(0.001);
     }
 
     /** Finishing all requests
@@ -52,8 +52,8 @@ curl_ev_f(va_list ap)
     for (;;) {
         if (ctx->lib_ctx->stat.active_requests == 0)
             break;
-        lib_loop(ctx->lib_ctx, 1);
-        fiber_sleep(0.1);
+        lib_loop(ctx->lib_ctx, 0.0);
+        fiber_sleep(0.001);
     }
 
     return 0;
