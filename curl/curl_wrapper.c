@@ -395,7 +395,7 @@ write_cb(void *ptr, size_t size, size_t nmemb, void *ctx)
 
 
 conn_t*
-new_conn(lib_ctx_t *l)
+new_conn(lib_ctx_t *l __attribute__((unused)))
 {
     assert(l);
 
