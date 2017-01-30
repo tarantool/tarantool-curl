@@ -15,7 +15,8 @@ find_package(CURL REQUIRED)
 find_package(Lua)
 
 include_directories(${CURL_INCLUDE_DIRS}
-                    ${TARANTOOL_INCLUDE_DIRS} )
+                    ${TARANTOOL_INCLUDE_DIRS}
+                    /usr/local/include)
 
 message(STATUS "curl: ${CURL_INCLUDE_DIRS} ${CURL_LIBRARIES}")
 message(STATUS "tarantool: ${TARANTOOL_INCLUDE_DIRS}")
