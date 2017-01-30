@@ -6,7 +6,6 @@
 package.preload['curl.driver'] = 'curl/driver.so'
 -- }}
 --
-box.cfg{}
 
 -- Includes
 local curl  = require('curl')

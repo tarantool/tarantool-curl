@@ -27,3 +27,8 @@ include_directories(${CURL_INCLUDE_DIRS}
 
 # Build module
 add_subdirectory(curl)
+
+add_custom_target(test
+                  WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+                  COMMAND ${CMAKE_CURRENT_SOURCE_DIR}/tests/run.sh
+                  DEPENDS driver)
