@@ -23,6 +23,7 @@ This package provides a Curl based HTTP client for Tarantool.
 %build
 %cmake . -DCMAKE_BUILD_TYPE=RelWithDebInfo
 make %{?_smp_mflags}
+make %{?_smp_mflags} test
 
 %install
 %make_install

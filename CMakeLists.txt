@@ -14,7 +14,7 @@ set(CMAKE_C_FLAGS_DEBUG "${CMAKE_C_FLAGS_DEBUG} ${MY_C_FLAGS}")
 find_package(Tarantool REQUIRED)
 find_package(CURL REQUIRED)
 find_package(LibEV REQUIRED)
-find_package(Lua)
+#find_package(Lua)
 
 message(STATUS "curl: ${CURL_INCLUDE_DIRS} ${CURL_LIBRARIES}")
 message(STATUS "tarantool: ${TARANTOOL_INCLUDE_DIRS}")
