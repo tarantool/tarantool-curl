@@ -46,8 +46,6 @@ script:
 
 before_deploy:
   - ls -l build/
-  - apt-get install libev libev-dev || echo
-  - yum install libev libev-debel || echo
 
 deploy:
   # Deploy packages to PackageCloud
