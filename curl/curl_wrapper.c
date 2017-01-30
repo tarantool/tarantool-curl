@@ -152,7 +152,7 @@ check_multi_info(lib_ctx_t *l)
         CURL     *easy     = msg->easy_handle;
         CURLcode curl_code = msg->data.result;
 
-        curl_easy_getinfo(easy, CURLINFO_PRIVATE, &c);
+        curl_easy_getinfo(easy, CURLINFO_PRIVATE, (void *) &c);
         curl_easy_getinfo(easy, CURLINFO_EFFECTIVE_URL, &eff_url);
         curl_easy_getinfo(easy, CURLINFO_RESPONSE_CODE, &http_code);
         curl_easy_getinfo(easy, CURLINFO_NUM_CONNECTS, &conns);
