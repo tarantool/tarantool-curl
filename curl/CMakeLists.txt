@@ -2,7 +2,7 @@
 add_library(driver SHARED curl_wrapper.c
                           driver.c )
 target_link_libraries(driver ${CURL_LIBRARIES}
-                             -lev
+                             ${LIBEV_LIBRARIES}
                              -rdynamic )
 set_target_properties(driver PROPERTIES PREFIX "" OUTPUT_NAME "driver")
 
@@ -17,6 +17,6 @@ if (LUA_FOUND)
                             unit_tests.c )
 
   target_link_libraries(unit_tests ${CURL_LIBRARIES}
-                                   -lev
+                                   ${LIBEV_LIBRARIES}
                                    ${LUA_LIBRARIES} )
 endif (LUA_FOUND)

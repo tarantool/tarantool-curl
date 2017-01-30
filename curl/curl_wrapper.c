@@ -465,10 +465,13 @@ conn_start(lib_ctx_t *l, conn_t *c, const conn_start_args_t *a)
         curl_easy_setopt(c->easy, CURLOPT_MAXCONNECTS, a->max_conns);
 
     if (a->keepalive_idle > 0 && a->keepalive_interval > 0) {
+
+#if LIBCURL_VERSION_MAJOR >= 7 && LIBCURL_VERSION_MINOR >= 25 && LIBCURL_VERSION_PATCH >= 0
         curl_easy_setopt(c->easy, CURLOPT_TCP_KEEPALIVE, 1L);
         curl_easy_setopt(c->easy, CURLOPT_TCP_KEEPIDLE, a->keepalive_idle);
         curl_easy_setopt(c->easy, CURLOPT_TCP_KEEPINTVL,
                                   a->keepalive_interval);
+#endif
 
         if (!conn_add_header(c, "Connection: Keep-Alive") &&
             !conn_add_header_keepaive(c, a))
