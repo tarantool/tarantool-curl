@@ -51,7 +51,7 @@ typedef struct {
 } sock_t;
 
 
-#define is_mcode_good(mcode) is_mcode_good_(__PRETTY_FUNCTION__, (mcode))
+#define is_mcode_good(mcode) is_mcode_good_(__FUNCTION__, (mcode))
 static void timer_cb(EV_P_ struct ev_timer *w, int revents);
 
 

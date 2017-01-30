@@ -42,7 +42,7 @@
 #if defined(MY_DEBUG)
 
 # define dd(...) do { \
-        fprintf(stderr, "tnt *** %s ", __PRETTY_FUNCTION__); \
+        fprintf(stderr, "tnt *** %s ", __FUNCTION__); \
         fprintf(stderr, __VA_ARGS__); \
         fprintf(stderr, " at %s line %d.\n", __FILE__, __LINE__); \
       } while(0)
