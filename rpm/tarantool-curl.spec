@@ -10,6 +10,7 @@ BuildRequires: cmake >= 2.8
 BuildRequires: gcc >= 4.5
 BuildRequires: libcurl-devel
 BuildRequires: tarantool-devel >= 1.6.8.0
+BuildRequires: libev, libev-devel
 BuildRequires: /usr/bin/prove
 Requires: tarantool >= 1.6.8.0, libev, libev-devel
 
