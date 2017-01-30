@@ -1,3 +1,9 @@
+tarantool-curl (2.2.3-1) stable; urgency=medium
+
+  * libev support
+  * imported many curl's options, see https://github.com/tarantool/curl/#api-reference
+
+ -- V. Soshnikov <dedok.mad@gmail.com>  Mon, 30 Jan 2017 20:05:01 +0300
 tarantool-curl (1.0.0-1) unstable; urgency=medium
 
   * Initial release.

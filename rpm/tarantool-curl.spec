@@ -1,5 +1,5 @@
 Name: tarantool-curl
-Version: 1.0.1
+Version: 2.2.3
 Release: 1%{?dist}
 Summary: Curl based HTTP client for Tarantool
 Group: Applications/Databases
@@ -36,5 +36,9 @@ make %{?_smp_mflags} test
 %license LICENSE AUTHORS
 
 %changelog
+* Mon Jan 30 2017 V. Soshnikov <dedok.mad@gmail.com> 2.2.3-1
+- libev support
+- imported many curl's options, see https://github.com/tarantool/curl/#api-reference
+
 * Wed Aug 31 2016 Andrey Drozdov <andrey@tarantool.org> 1.0.0-1
 - Initial version of the RPM spec
