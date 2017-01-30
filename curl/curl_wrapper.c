@@ -486,18 +486,18 @@ conn_start(lib_ctx_t *l, conn_t *c, const conn_start_args_t *a)
         }
     }
 
-    if (a->read_timeout)
+    if (a->read_timeout > 0)
         curl_easy_setopt(c->easy, CURLOPT_TIMEOUT, a->read_timeout);
 
-    if (a->connect_timeout)
+    if (a->connect_timeout > 0)
         curl_easy_setopt(c->easy, CURLOPT_CONNECTTIMEOUT, a->connect_timeout);
 
-    if (a->dns_cache_timeout)
+    if (a->dns_cache_timeout > 0)
         curl_easy_setopt(c->easy, CURLOPT_DNS_CACHE_TIMEOUT,
                          a->dns_cache_timeout);
 
     if (a->curl_verbose)
-        curl_easy_setopt(c->easy, CURLOPT_VERBOSE, 0L);
+        curl_easy_setopt(c->easy, CURLOPT_VERBOSE, 1L);
 
     curl_easy_setopt(c->easy, CURLOPT_PRIVATE, (void *) c);
 
@@ -520,7 +520,7 @@ conn_start(lib_ctx_t *l, conn_t *c, const conn_start_args_t *a)
         curl_easy_setopt(c->easy, CURLOPT_LOW_SPEED_LIMIT, a->low_speed_limit);
 
     /* Headers have to seted right before add_handle() */
-    if (c->headers)
+    if (c->headers != NULL)
         curl_easy_setopt(c->easy, CURLOPT_HTTPHEADER, c->headers);
 
     ++l->stat.total_requests;

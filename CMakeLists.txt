@@ -6,24 +6,13 @@ project(tarantool-curl C)
 
 set(CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake" ${CMAKE_MODULE_PATH})
 
-option(_CULR "third_party libcurl" off)
-
 # Set CFLAGS
 set(MY_C_FLAGS "-Wall -Wextra -Werror -std=gnu11 -fno-strict-aliasing")
 set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} ${MY_C_FLAGS}")
 set(CMAKE_C_FLAGS_DEBUG "${CMAKE_C_FLAGS_DEBUG} ${MY_C_FLAGS}")
 
 find_package(Tarantool REQUIRED)
-message(STATUS ${_CULR})
-if (_CULR)
-  set(CURL_INCLUDE_DIRS
-    ${CMAKE_CURRENT_SOURCE_DIR}/third_party/curl/build/include/)
-  set(CURL_LIBRARIES
-    ${CMAKE_CURRENT_SOURCE_DIR}/third_party/curl/build/lib/libcurl.a)
-else ()
-  find_package(CURL REQUIRED)
-endif ()
-
+find_package(CURL REQUIRED)
 find_package(LibEV REQUIRED)
 find_package(Lua)
 
