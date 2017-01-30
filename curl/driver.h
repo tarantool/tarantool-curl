@@ -55,7 +55,7 @@ static inline
 tnt_lib_ctx_t*
 ctx_get(lua_State *L)
 {
-	return (tnt_lib_ctx_t *)
+  return (tnt_lib_ctx_t *)
       luaL_checkudata(L, 1, DRIVER_LUA_UDATA_NAME);
 }
 
