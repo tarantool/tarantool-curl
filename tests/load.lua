@@ -85,6 +85,10 @@ fiber.create(function()
       print(yaml.encode(obj.http:stat()))
 
       if obj.http:stat().active_requests == 0 then
+        local st = obj.http:stat()
+        assert(st.sockets_added == st.sockets_deleted)
+        assert(st.active_requests == 0)
+        assert(st.loop_calls > 0)
         obj.http:free()
         rest = rest - 1
       end
@@ -103,11 +107,6 @@ fiber.create(function()
     end
 
   end
-
-  local st = http:stat()
-  assert(st.socked_added ~= st.socket_deleted)
-  assert(st.active_requests == 0)
-  assert(st.loop_calls > 0)
 
   print('[+] load OK')
 

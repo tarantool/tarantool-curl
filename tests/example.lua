@@ -48,7 +48,7 @@ assert(obody.headers['My-Header2'] == headers.my_header2)
 -- }}}
 
 local st = http:stat()
-assert(st.socked_added ~= st.socket_deleted)
+assert(st.sockets_added == st.sockets_deleted)
 assert(st.active_requests == 0)
 assert(st.loop_calls > 0)
 

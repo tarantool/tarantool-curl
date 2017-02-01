@@ -98,7 +98,7 @@ while http:stat().active_requests ~= 0 do
 end
 
 local st = http:stat()
-assert(st.socked_added ~= st.socket_deleted)
+assert(st.sockets_added == st.sockets_deleted)
 assert(st.active_requests == 0)
 assert(st.loop_calls > 0)
 

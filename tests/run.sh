@@ -10,8 +10,7 @@ tarantool tests/example.lua
 tarantool tests/bugs.lua
 tarantool tests/async.lua
 ./tests/server.js &
-spid=$!
 tarantool tests/load.lua
-kill -s TERM $!
+kill -s TERM %1
 
 echo '[+] OK'
