@@ -1,5 +1,5 @@
 Name: tarantool-curl
-Version: 2.2.3
+Version: 2.2.5
 Release: 1%{?dist}
 Summary: Curl based HTTP client for Tarantool
 Group: Applications/Databases
@@ -11,6 +11,7 @@ BuildRequires: gcc >= 4.5
 BuildRequires: libcurl-devel
 BuildRequires: tarantool-devel >= 1.6.8.0
 BuildRequires: libev, libev-devel
+BuildRequires: nodejs
 BuildRequires: /usr/bin/prove
 Requires: tarantool >= 1.6.8.0, libev
 
