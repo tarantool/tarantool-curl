@@ -42,23 +42,22 @@
 #define WORK_TIMEOUT 0.3
 #define TNT_CURL_VERSION_MAJOR 2
 #define TNT_CURL_VERSION_MINOR 2
-#define TNT_CURL_VERSION_PATCH 3
+#define TNT_CURL_VERSION_PATCH 5
 
 typedef struct  {
-    lib_ctx_t    *lib_ctx;
+    curl_ctx_t   *curl_ctx;
     struct fiber *fiber;
     bool         done;
-} tnt_lib_ctx_t;
+} lib_ctx_t;
 
 
 static inline
-tnt_lib_ctx_t*
+lib_ctx_t*
 ctx_get(lua_State *L)
 {
-  return (tnt_lib_ctx_t *)
+  return (lib_ctx_t *)
       luaL_checkudata(L, 1, DRIVER_LUA_UDATA_NAME);
 }
-
 
 static inline
 int
@@ -72,6 +71,15 @@ curl_make_result(lua_State *L, CURLcode code, CURLMcode mcode)
   return make_str_result(L,
         code != CURLE_OK,
         (emsg != NULL ? emsg : "ok"));
+}
+
+static inline
+void
+add_field_u64(lua_State *L, const char *key, uint64_t value)
+{
+    lua_pushstring(L, key);
+    lua_pushinteger(L, value);
+    lua_settable(L, -3);  /* 3rd element from the stack top */
 }
 
 #endif /* DRIVER_H_INCLUDED */

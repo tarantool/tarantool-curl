@@ -46,7 +46,8 @@
 #include <lualib.h>
 #include <lauxlib.h>
 
-/** lib_ctx information, common to all connections
+
+/** curl_ctx information, common to all connections
  */
 typedef struct {
 
@@ -56,27 +57,36 @@ typedef struct {
   CURLM           *multi;
   int             still_running;
 
+  /* Various values of statistics, it are used only for all
+   * connection in curl context */
   struct {
     uint64_t      total_requests;
     uint64_t      http_200_responses;
     uint64_t      http_other_responses;
     size_t        failed_requests;
     size_t        active_requests;
-    size_t        socket_added;
-    size_t        socket_deleted;
+    size_t        sockets_added;
+    size_t        sockets_deleted;
     size_t        loop_calls;
   } stat;
 
-} lib_ctx_t;
+} curl_ctx_t;
 
 
 /** Information associated with a specific easy handle
  */
 typedef struct {
-  CURL      *easy;
-  lib_ctx_t *lib_ctx;
-  char      error[CURL_ERROR_SIZE];
 
+  /* Reference to a current connection object */
+  CURL       *easy;
+
+  /* Reference to curl context */
+  curl_ctx_t *curl_ctx;
+
+  /* error buffer */
+  char       error[CURL_ERROR_SIZE];
+
+  /* Callbacks from lua and Lua context */
   struct {
     lua_State *L;
     int       read_fn;
@@ -85,36 +95,78 @@ typedef struct {
     int       fn_ctx;
   } lua_ctx;
 
+  /* HTTP headers */
   struct curl_slist *headers;
 } conn_t;
 
+
 typedef struct {
+
+  /* Max amount of cached alive connections */
   long max_conns;
+
+  /* Non-universal keepalive knobs (Linux, AIX, HP-UX, more) */
   long keepalive_idle;
   long keepalive_interval;
+
+  /* Set the "low speed limit & time"
+     If the download receives less than "low speed limit" bytes/second during
+     "low speed time" seconds, the operations is aborted. You could i.e if you
+     have a pretty high speed connection, abort if it is less than 2000
+     bytes/sec during 20 seconds;
+   */
   long low_speed_time;
   long low_speed_limit;
+
+  /* Time-out the read operation after this amount of seconds */
   long read_timeout;
+
+  /* Time-out connect operations after this amount of seconds, if connects are
+     OK within this time, then fine... This only aborts the connect phase. */
   long connect_timeout;
+
+  /* DNS cache timeout */
   long dns_cache_timeout;
+
+  /* Enable/Disable curl verbose mode */
   bool curl_verbose;
 } conn_start_args_t;
 
 
 typedef struct {
+  /* Set to true to enable pipelining for this multi handle */
   bool pipeline;
+
+  /* Maximum number of entries in the connection cache */
   long max_conns;
-} lib_new_args_t;
+} curl_args_t;
 
-lib_ctx_t* lib_new(const lib_new_args_t *a);
-void lib_free(lib_ctx_t *l);
-void lib_loop(lib_ctx_t *l, double timeout);
-void lib_print_stat(lib_ctx_t *l, FILE* out);
 
-conn_t* new_conn(lib_ctx_t *l);
+/** Curl context API {{{
+ */
+curl_ctx_t* curl_ctx_new(const curl_args_t *a);
+void curl_destroy(curl_ctx_t *l); /* curl_free exists! */
+void curl_poll_one(curl_ctx_t *l);
+void curl_print_stat(curl_ctx_t *l, FILE* out);
+
+static inline
+curl_ctx_t*
+curl_ctx_new_easy(void) {
+  const curl_args_t a = { .pipeline = false,
+                          .max_conns = 5 };
+  return curl_ctx_new(&a);
+}
+/* }}} */
+
+/** Connection API {{{
+ */
+conn_t* new_conn(curl_ctx_t *l);
 void free_conn(conn_t *c);
-CURLMcode conn_start(lib_ctx_t *l, conn_t *c, const conn_start_args_t *a);
-conn_t* new_conn_test(lib_ctx_t *l, const char *url);
+CURLMcode conn_start(conn_t *c, const conn_start_args_t *a);
+
+#if defined (MY_DEBUG)
+conn_t* new_conn_test(curl_ctx_t *l, const char *url);
+#endif /* MY_DEBUG */
 
 static inline
 bool
@@ -191,5 +243,6 @@ conn_start_args_init(conn_start_args_t *a)
 }
 
 void conn_start_args_print(const conn_start_args_t *a, FILE *out);
+/* }}} */
 
 #endif /* CURL_WRAPPER_H_INCLUDED */

@@ -31,12 +31,16 @@
 
 local fiber       = require('fiber')
 local curl_driver = require('curl.driver')
-local yaml        = require('yaml')
 
 local curl_mt
 
 --
---  Create a new curl instance.
+--  <http> - create a new curl instance.
+--
+--  Parameters:
+--
+--    pipeline - set to true to enable pipelining for this multi handle */
+--    max_conns -  Maximum number of entries in the connection cache */
 --
 --  Returns:
 --     curl object or raise error
@@ -53,16 +57,16 @@ local http = function(pipeline, max_conns)
                        curl_mt )
 end
 
---
+
 -- Internal {{{
 local function read_cb(cnt, ctx)
-    local res = ctx.readen:sub(1, cnt)
-    ctx.readen = ctx.readen:sub(cnt + 1)
+    local res = ctx.body:sub(1, cnt)
+    ctx.body = ctx.body:sub(cnt + 1)
     return res
 end
 
 local function write_cb(data, ctx)
-    ctx.written = ctx.written .. data
+    ctx.response = ctx.response .. data
     return data:len()
 end
 
@@ -73,7 +77,6 @@ local function done_cb(curl_code, http_code, error_message, ctx)
     ctx.error_message = error_message
     fiber.wakeup(ctx.fiber)
 end
--- }}}
 
 --
 --  <async_request> This function does HTTP request
@@ -105,7 +108,7 @@ end
 local function sync_request(self, method, url, body, opts)
 
     if not method or not url then
-        error("sync_request expects (method, url, ...)")
+        error('sync_request(method, url [, body [, options]])')
     end
 
     opts = opts or {}
@@ -115,8 +118,8 @@ local function sync_request(self, method, url, body, opts)
                  curl_code     = 0,
                  error_message = '',
                  fiber         = fiber.self(),
-                 written       = '',
-                 readen        = body or '', }
+                 response      = '',
+                 body          = body or '', }
 
     local headers = opts.headers or {}
 
@@ -160,8 +163,10 @@ local function sync_request(self, method, url, body, opts)
     end
 
     -- Curl did a request and he has a response
-    return {code = ctx.http_code, body = ctx.written}
+    return {code = ctx.http_code, body = ctx.response}
 end
+-- }}}
+
 
 curl_mt = {
   __index = {
@@ -201,60 +206,74 @@ curl_mt = {
     --  Returns:
     --     0 or raise an error
     --
-    request = function(self, method, url, options)
-      local curl = self.curl
-      if not method or not url or not options then
-        error('request expects (method, url, options)')
-      end
-      return curl:async_request(method, url, options)
+    request = function(self, method, url, body, options)
+        if not method or not url then
+            error('signature (method, url [, body [, options]])')
+        end
+        return sync_request(self, method, url, body, options)
     end,
 
     --
-    -- see <async_request>
+    -- <get> - see <request>
     --
-    get_request = function(self, url, options)
-      return self.curl:async_request('GET', url, options)
+    get = function(self, url, options)
+        return self:request('GET', url, '', options)
     end,
 
     --
-    -- See <async_request>
+    -- <post> - see <request>
     --
-    sync_request = sync_request,
-
-    --
-    -- See <async_request>
-    --
-    sync_post_request = function(self, url, body, options)
-      return sync_request(self, 'POST', url, body, options)
+    post = function(self, url, body, options)
+        return self:request('POST', url, body, options)
     end,
 
     --
-    -- See <async_request>
+    -- <put> - see <request>
     --
-    sync_put_request = function(self, url, body, options)
-      return sync_request(self, 'PUT', url, body, options)
+    put = function(self, url, body, options)
+        return self:request('PUT', url, body, options)
+    end,
+
+    async_request = function(self, method, url, options)
+        if not method or not url or not options then
+            error('signature (method, url [, body [, options]])')
+        end
+        if type(options.read) ~= 'function' or
+           type(options.write) ~= 'function' or
+           type(options.done) ~= 'function'
+        then
+            error('options should have read write and done functions')
+        end
+        return self.curl:async_request(method, url, options)
+    end,
+
+    async_get = function(self, url, options)
+        return self:async_request('GET', url, options)
+    end,
+
+    async_post = function(self, url, options)
+        return self:async_request('POST', url, options)
+    end,
+
+    async_put = function(self, url, options)
+        return self:async_request('PUT', url, options)
     end,
 
     --
-    -- See <async_request>
-    --
-    sync_get_request = function(self, url, options)
-      return sync_request(self, 'GET', url, '', options)
-    end,
-
-    --
-    -- This function returns a table with many values of statistic.
+    -- <stat> - this function returns a table with many values of statistic.
     --
     stat = function(self)
-      return self.curl:stat()
+        return self.curl:stat()
     end,
 
     --
+    -- <free> - cleanup resources
+    --
     -- Should be called at the end of work.
-    -- This function cleans all resources (i.e. destructor).
+    -- This function does clean all resources (i.e. destructor).
     --
     free = function(self)
-      self.curl:free()
+        self.curl:free()
     end,
   },
 }
@@ -263,5 +282,6 @@ curl_mt = {
 -- Export
 --
 return {
+  -- <see http>
   http = http,
 }

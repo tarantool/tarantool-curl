@@ -40,7 +40,7 @@
  */
 typedef struct {
   CURL          *easy;
-  lib_ctx_t     *lib_ctx;
+  curl_ctx_t    *curl_ctx;
   struct ev_io  ev;
 
   curl_socket_t sockfd;
@@ -114,7 +114,7 @@ multi_timer_cb(CURLM *multi __attribute__((unused)),
 {
     dd("timeout_ms = %li", timeout_ms);
 
-    lib_ctx_t *l = (lib_ctx_t *) ctx;
+    curl_ctx_t *l = (curl_ctx_t *) ctx;
 
     ev_timer_stop(l->loop, &l->timer_event);
     if (timeout_ms > 0) {
@@ -133,14 +133,13 @@ multi_timer_cb(CURLM *multi __attribute__((unused)),
  */
 static
 void
-check_multi_info(lib_ctx_t *l)
+check_multi_info(curl_ctx_t *l)
 {
     char    *eff_url;
     CURLMsg *msg;
     int     msgs_left;
     conn_t  *c;
     long    http_code;
-    long    conns;
 
     dd("REMAINING: still_running = %d", l->still_running);
 
@@ -155,7 +154,6 @@ check_multi_info(lib_ctx_t *l)
         curl_easy_getinfo(easy, CURLINFO_PRIVATE, (void *) &c);
         curl_easy_getinfo(easy, CURLINFO_EFFECTIVE_URL, &eff_url);
         curl_easy_getinfo(easy, CURLINFO_RESPONSE_CODE, &http_code);
-        curl_easy_getinfo(easy, CURLINFO_NUM_CONNECTS, &conns);
 
         dd("DONE: url = %s, curl_code = %d, error = %s, http_code = %d",
                 eff_url, curl_code, c->error, (int) http_code);
@@ -197,7 +195,7 @@ event_cb(EV_P_ struct ev_io *w, int revents)
 
     dd("w = %p, revents = %d", (void *) w, revents);
 
-    lib_ctx_t *l = (lib_ctx_t*) w->data;
+    curl_ctx_t *l = (curl_ctx_t*) w->data;
 
     const int action = ( (revents & EV_READ ? CURL_POLL_IN : 0) |
                          (revents & EV_WRITE ? CURL_POLL_OUT : 0) );
@@ -225,7 +223,7 @@ timer_cb(EV_P_ struct ev_timer *w, int revents __attribute__((unused)))
 
     dd("w = %p, revents = %i", (void *) w, revents);
 
-    lib_ctx_t *l = (lib_ctx_t *) w->data;
+    curl_ctx_t *l = (curl_ctx_t *) w->data;
     CURLMcode rc = curl_multi_socket_action(l->multi, CURL_SOCKET_TIMEOUT, 0,
                                             &l->still_running);
     if (!is_mcode_good(rc))
@@ -238,7 +236,7 @@ timer_cb(EV_P_ struct ev_timer *w, int revents __attribute__((unused)))
  */
 static inline
 void
-remsock(sock_t *f, lib_ctx_t *l)
+remsock(sock_t *f, curl_ctx_t *l)
 {
     dd("removing socket");
 
@@ -248,7 +246,7 @@ remsock(sock_t *f, lib_ctx_t *l)
     if (f->evset)
         ev_io_stop(l->loop, &f->ev);
 
-    ++l->stat.socket_deleted;
+    ++l->stat.sockets_deleted;
 
     free(f);
 }
@@ -262,7 +260,7 @@ setsock(sock_t *f,
         curl_socket_t s,
         CURL *e,
         int act,
-        lib_ctx_t *l)
+        curl_ctx_t *l)
 {
     dd("set new socket");
 
@@ -287,7 +285,7 @@ setsock(sock_t *f,
  */
 static
 bool
-addsock(curl_socket_t s, CURL *easy, int action, lib_ctx_t *l)
+addsock(curl_socket_t s, CURL *easy, int action, curl_ctx_t *l)
 {
     sock_t *fdp = (sock_t *) malloc(sizeof(sock_t));
     if (fdp == NULL)
@@ -295,13 +293,13 @@ addsock(curl_socket_t s, CURL *easy, int action, lib_ctx_t *l)
 
     memset(fdp, 0, sizeof(sock_t));
 
-    fdp->lib_ctx = l;
+    fdp->curl_ctx = l;
 
     setsock(fdp, s, easy, action, l);
 
     curl_multi_assign(l->multi, s, fdp);
 
-    ++fdp->lib_ctx->stat.socket_added;
+    ++fdp->curl_ctx->stat.sockets_added;
 
     return true;
 }
@@ -312,7 +310,7 @@ static
 int
 sock_cb(CURL *e, curl_socket_t s, int what, void *cbp, void *sockp)
 {
-    lib_ctx_t *l = (lib_ctx_t*) cbp;
+    curl_ctx_t *l = (curl_ctx_t*) cbp;
     sock_t    *fdp = (sock_t*) sockp;
 
 #if defined(MY_DEBUG)
@@ -395,7 +393,7 @@ write_cb(void *ptr, size_t size, size_t nmemb, void *ctx)
 
 
 conn_t*
-new_conn(lib_ctx_t *l __attribute__((unused)))
+new_conn(curl_ctx_t *l)
 {
     assert(l);
 
@@ -409,6 +407,8 @@ new_conn(lib_ctx_t *l __attribute__((unused)))
         free(c);
         return NULL;
     }
+
+    c->curl_ctx = l;
 
     c->lua_ctx.L        = NULL;
     c->lua_ctx.read_fn  = LUA_REFNIL;
@@ -425,10 +425,10 @@ free_conn(conn_t *c)
 {
     assert(c);
 
-    if (c->lib_ctx) {
-        --c->lib_ctx->stat.active_requests;
-        if (c->lib_ctx->multi && c->easy)
-            curl_multi_remove_handle(c->lib_ctx->multi, c->easy);
+    if (c->curl_ctx) {
+        --c->curl_ctx->stat.active_requests;
+        if (c->curl_ctx->multi && c->easy)
+            curl_multi_remove_handle(c->curl_ctx->multi, c->easy);
     }
 
     if (c->easy)
@@ -449,15 +449,12 @@ free_conn(conn_t *c)
 
 
 CURLMcode
-conn_start(lib_ctx_t *l, conn_t *c, const conn_start_args_t *a)
+conn_start(conn_t *c, const conn_start_args_t *a)
 {
-    assert(l);
     assert(c);
     assert(a);
     assert(c->easy);
-    assert(l->multi);
-
-    c->lib_ctx = l;
+    assert(c->curl_ctx);
 
     if (a->max_conns > 0)
         curl_easy_setopt(c->easy, CURLOPT_MAXCONNECTS, a->max_conns);
@@ -475,17 +472,22 @@ conn_start(lib_ctx_t *l, conn_t *c, const conn_start_args_t *a)
         if (!conn_add_header(c, "Connection: Keep-Alive") &&
             !conn_add_header_keepaive(c, a))
         {
-            ++l->stat.failed_requests;
+            ++c->curl_ctx->stat.failed_requests;
             return CURLM_OUT_OF_MEMORY;
         }
     } else {
         if (!conn_add_header(c, "Connection: close")) {
-            ++l->stat.failed_requests;
+            ++c->curl_ctx->stat.failed_requests;
             return CURLM_OUT_OF_MEMORY;
         }
     }
 
-#endif /* > 7.25.0 */
+#else /* > 7.25.0 */
+
+    if (a->keepalive_idle > 0 && a->keepalive_interval > 0)
+        curl_easy_setopt(c->easy, CURLOPT_TCP_KEEPALIVE, 1L);
+
+#endif
 
     if (a->read_timeout > 0)
         curl_easy_setopt(c->easy, CURLOPT_TIMEOUT, a->read_timeout);
@@ -524,24 +526,23 @@ conn_start(lib_ctx_t *l, conn_t *c, const conn_start_args_t *a)
     if (c->headers != NULL)
         curl_easy_setopt(c->easy, CURLOPT_HTTPHEADER, c->headers);
 
-    ++l->stat.total_requests;
+    ++c->curl_ctx->stat.total_requests;
 
-    CURLMcode rc = curl_multi_add_handle(l->multi, c->easy);
+    CURLMcode rc = curl_multi_add_handle(c->curl_ctx->multi, c->easy);
     if (!is_mcode_good(rc)) {
-        ++l->stat.failed_requests;
+        ++c->curl_ctx->stat.failed_requests;
         return rc;
     }
 
-    ++l->stat.active_requests;
+    ++c->curl_ctx->stat.active_requests;
 
     return rc;
 }
 
 
-/** Create a new easy handle, and add it to the lib_ctx curl_multi
- */
+#if defined (MY_DEBUG)
 conn_t*
-new_conn_test(lib_ctx_t *l, const char *url)
+new_conn_test(curl_ctx_t *l, const char *url)
 {
     conn_t *c = new_conn(l);
     if (c == NULL)
@@ -556,7 +557,7 @@ new_conn_test(lib_ctx_t *l, const char *url)
     a.keepalive_idle = 120;
     a.read_timeout = 2;
 
-    if (conn_start(l, c, &a) != CURLM_OK)
+    if (conn_start(c, &a) != CURLM_OK)
         goto error_exit;
 
     return c;
@@ -565,18 +566,19 @@ error_exit:
     free_conn(c);
     return NULL;
 }
+#endif /* MY_DEBUG */
 
 
-lib_ctx_t*
-lib_new(const lib_new_args_t *a)
+curl_ctx_t*
+curl_ctx_new(const curl_args_t *a)
 {
     assert(a);
 
-    lib_ctx_t *l = (lib_ctx_t *) malloc(sizeof(lib_ctx_t));
+    curl_ctx_t *l = (curl_ctx_t *) malloc(sizeof(curl_ctx_t));
     if (l == NULL)
         return NULL;
 
-    memset(l, 0, sizeof(lib_ctx_t));
+    memset(l, 0, sizeof(curl_ctx_t));
 
     l->loop = ev_loop_new(0);
     if (l->loop == NULL)
@@ -598,18 +600,19 @@ lib_new(const lib_new_args_t *a)
     if (a->pipeline)
         curl_multi_setopt(l->multi, CURLMOPT_PIPELINING, 1L /* pipline on */);
 
+    if (a->max_conns > 0)
+        curl_multi_setopt(l->multi, CURLMOPT_MAXCONNECTS, a->max_conns);
+
     return l;
 
 error_exit:
-    if (l != NULL)
-        lib_free(l);
-
+    curl_destroy(l);
     return NULL;
 }
 
 
 void
-lib_free(lib_ctx_t *l)
+curl_destroy(curl_ctx_t *l)
 {
     if (l == NULL)
         return;
@@ -625,7 +628,7 @@ lib_free(lib_ctx_t *l)
 
 
 void
-lib_loop(lib_ctx_t *l, double timeout __attribute__((unused)))
+curl_poll_one(curl_ctx_t *l)
 {
     if (l == NULL)
         return;
@@ -644,19 +647,19 @@ lib_loop(lib_ctx_t *l, double timeout __attribute__((unused)))
 
 
 void
-lib_print_stat(lib_ctx_t *l, FILE* out)
+curl_print_stat(curl_ctx_t *l, FILE* out)
 {
     if (l == NULL)
         return;
 
-    fprintf(out, "active_requests = %zu, socket_added = %zu, "
-                 "socket_deleted = %zu, loop_calls = %zu, "
+    fprintf(out, "active_requests = %zu, sockets_added = %zu, "
+                 "sockets_deleted = %zu, loop_calls = %zu, "
                  "total_requests = %llu, failed_requests = %llu, "
                  "http_200_responses = %llu, http_other_responses = %llu"
                  "\n",
             l->stat.active_requests,
-            l->stat.socket_added,
-            l->stat.socket_deleted,
+            l->stat.sockets_added,
+            l->stat.sockets_deleted,
             l->stat.loop_calls,
             (unsigned long long) l->stat.total_requests,
             (unsigned long long) l->stat.failed_requests,
@@ -679,4 +682,3 @@ conn_start_args_print(const conn_start_args_t *a, FILE *out)
           (int) a->low_speed_limit,
           (int) a->curl_verbose );
 }
-

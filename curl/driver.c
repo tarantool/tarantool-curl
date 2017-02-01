@@ -36,23 +36,23 @@ static
 int
 curl_ev_f(va_list ap)
 {
-    tnt_lib_ctx_t *ctx = va_arg(ap, tnt_lib_ctx_t *);
+    lib_ctx_t *ctx = va_arg(ap, lib_ctx_t *);
 
     fiber_set_cancellable(true);
 
     for (;;) {
         if (ctx->done)
             break;
-        lib_loop(ctx->lib_ctx, 0.0);
+        curl_poll_one(ctx->curl_ctx);
         fiber_sleep(0.001);
     }
 
     /** Finishing all requests
      */
     for (;;) {
-        if (ctx->lib_ctx->stat.active_requests == 0)
+        if (ctx->curl_ctx->stat.active_requests == 0)
             break;
-        lib_loop(ctx->lib_ctx, 0.0);
+        curl_poll_one(ctx->curl_ctx);
         fiber_sleep(0.001);
     }
 
@@ -64,18 +64,18 @@ curl_ev_f(va_list ap)
  */
 static
 int
-tnt_lib_async_request(lua_State *L)
+async_request(lua_State *L)
 {
     const char *reason = "unknown error";
 
-    tnt_lib_ctx_t *ctx = ctx_get(L);
+    lib_ctx_t *ctx = ctx_get(L);
     if (ctx == NULL)
         return luaL_error(L, "can't get lib ctx");
 
     if (ctx->done)
         return luaL_error(L, "curl stopped");
 
-    conn_t *c = new_conn(ctx->lib_ctx);
+    conn_t *c = new_conn(ctx->curl_ctx);
     if (c == NULL)
         return luaL_error(L, "can't allocate conn_t");
 
@@ -246,7 +246,7 @@ tnt_lib_async_request(lua_State *L)
      * time-out to trigger very soon so that
      * the necessary socket_action() call will be
      * called by this app */
-    CURLMcode rc = conn_start(ctx->lib_ctx, c, &conn_args);
+    CURLMcode rc = conn_start(c, &conn_args);
     if (rc != CURLM_OK)
         goto error_exit;
 
@@ -259,32 +259,22 @@ error_exit:
 
 
 static
-void
-add_field_u64(lua_State *L, const char *key, uint64_t value)
-{
-    lua_pushstring(L, key);
-    lua_pushinteger(L, value);
-    lua_settable(L, -3);  /* 3rd element from the stack top */
-}
-
-
-static
 int
-tnt_lib_stat(lua_State *L)
+get_stat(lua_State *L)
 {
-    tnt_lib_ctx_t *ctx = ctx_get(L);
+    lib_ctx_t *ctx = ctx_get(L);
     if (ctx == NULL)
         return luaL_error(L, "can't get lib ctx");
 
-    lib_ctx_t *l = ctx->lib_ctx;
+    curl_ctx_t *l = ctx->curl_ctx;
     if (l == NULL)
         return luaL_error(L, "it doesn't initialized");
 
     lua_newtable(L);
 
     add_field_u64(L, "active_requests", (uint64_t) l->stat.active_requests);
-    add_field_u64(L, "socket_added", (uint64_t) l->stat.socket_added);
-    add_field_u64(L, "socket_deleted", (uint64_t) l->stat.socket_deleted);
+    add_field_u64(L, "socket_added", (uint64_t) l->stat.sockets_added);
+    add_field_u64(L, "socket_deleted", (uint64_t) l->stat.sockets_deleted);
     add_field_u64(L, "loop_calls", (uint64_t) l->stat.loop_calls);
     add_field_u64(L, "total_requests", l->stat.total_requests);
     add_field_u64(L, "http_200_responses",  l->stat.http_200_responses);
@@ -299,7 +289,7 @@ tnt_lib_stat(lua_State *L)
  */
 static
 int
-tnt_lib_version(lua_State *L)
+version(lua_State *L)
 {
   char version[sizeof("tarantool.curl: xxx.xxx.xxx") +
                sizeof("curl: xxx.xxx.xxx,") +
@@ -325,33 +315,33 @@ tnt_lib_version(lua_State *L)
 /** lib API {{{
  */
 
-static void tnt_lib_free_(tnt_lib_ctx_t *ctx);
+static void do_free_(lib_ctx_t *ctx);
 
 static
 int
-tnt_lib_new(lua_State *L)
+new(lua_State *L)
 {
     const char *reason = "unknown error";
 
-    tnt_lib_ctx_t *ctx = (tnt_lib_ctx_t *)
-            lua_newuserdata(L, sizeof(tnt_lib_ctx_t));
+    lib_ctx_t *ctx = (lib_ctx_t *)
+            lua_newuserdata(L, sizeof(lib_ctx_t));
     if (ctx == NULL)
-        return luaL_error(L, "lua_newuserdata failed: tnt_lib_ctx_t");
+        return luaL_error(L, "lua_newuserdata failed: lib_ctx_t");
 
-    ctx->lib_ctx = NULL;
+    ctx->curl_ctx = NULL;
     ctx->fiber   = NULL;
     ctx->done    = false;
 
-    lib_new_args_t args = {.pipeline = false,
-                           .max_conns = 5 };
+    curl_args_t args = { .pipeline = false,
+                         .max_conns = 5 };
 
     /* pipeline: 1 - on, 0 - off */
     args.pipeline  = (bool) luaL_checkint(L, 1);
     args.max_conns = luaL_checklong(L, 2);
 
-    ctx->lib_ctx = lib_new(&args);
-    if (ctx->lib_ctx == NULL) {
-        reason = "lib_new failed";
+    ctx->curl_ctx = curl_ctx_new(&args);
+    if (ctx->curl_ctx == NULL) {
+        reason = "curl_new failed";
         goto error_exit;
     }
 
@@ -371,32 +361,32 @@ tnt_lib_new(lua_State *L)
     return 1;
 
 error_exit:
-    tnt_lib_free_(ctx);
+    do_free_(ctx);
     return luaL_error(L, reason);
 }
 
 
 static
 void
-tnt_lib_free_(tnt_lib_ctx_t *ctx)
+do_free_(lib_ctx_t *ctx)
 {
-    assert(ctx);
+    if (ctx == NULL)
+      return;
 
     ctx->done = true;
 
     if (ctx->fiber)
         fiber_join(ctx->fiber);
 
-    if (ctx->lib_ctx)
-        lib_free(ctx->lib_ctx);
+    curl_destroy(ctx->curl_ctx);
 }
 
 
 static
 int
-tnt_lib_free(lua_State *L)
+cleanup(lua_State *L)
 {
-    tnt_lib_free_(ctx_get(L));
+    do_free_(ctx_get(L));
 
     /* remove all methods operating on ctx */
     lua_newtable(L);
@@ -411,16 +401,15 @@ tnt_lib_free(lua_State *L)
  */
 
 static const struct luaL_Reg R[] = {
-    {"version", tnt_lib_version},
-    {"new",     tnt_lib_new},
+    {"version", version},
+    {"new",     new},
     {NULL,      NULL}
 };
 
 static const struct luaL_Reg M[] = {
-    {"async_request", tnt_lib_async_request},
-    {"stat",          tnt_lib_stat},
-    {"free",          tnt_lib_free},
-    {"__gc",          tnt_lib_free},
+    {"async_request", async_request},
+    {"stat",          get_stat},
+    {"free",          cleanup /* free already exists */},
     {NULL,            NULL}
 };
 

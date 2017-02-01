@@ -44,29 +44,31 @@ basic_features(void)
 {
     say_("[+] basic_features");
 
-    lib_ctx_t *l = lib_new();
+    curl_ctx_t *l = curl_ctx_new_easy();
 
     for (;;) {
+#if defined (MY_DEBUG)
         new_conn_test(l, "127.0.0.1:10000/");
+#endif
         if (l->stat.active_requests > 10)
             break;
-        lib_loop(l, 0.0);
+        curl_poll_one(l);
     }
 
     for (;;) {
         if (l->stat.active_requests == 0)
             break;
-        lib_loop(l, 0.0);
+        curl_poll_one(l);
     }
 
-    lib_print_stat(l, stderr);
+    curl_print_stat(l, stderr);
 
     assert(l->stat.active_requests == 0);
-    assert(l->stat.socket_deleted == l->stat.socket_added);
+    assert(l->stat.sockets_deleted == l->stat.sockets_added);
 
     say_("[+] finished");
 
-    lib_free(l);
+    curl_destroy(l);
 }
 
 
