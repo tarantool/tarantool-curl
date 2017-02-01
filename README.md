@@ -219,6 +219,7 @@ The parameters that can go with the operations are:
         return to_server`
       end
       ```
+
 ## Example function
 
 In this example, we define a function named `d()` and make three GET requests:
