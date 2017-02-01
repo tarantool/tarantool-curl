@@ -43,7 +43,7 @@ local curl_mt
 --    max_conns -  Maximum number of entries in the connection cache */
 --
 --  Returns:
---     curl object or raise error
+--     curl object or raise error()
 --
 local http = function(pipeline, max_conns)
   curl = curl_driver.new(pipeline or 0, max_conns or 5)
@@ -79,7 +79,7 @@ local function done_cb(curl_code, http_code, error_message, ctx)
 end
 
 --
---  <async_request> This function does HTTP request
+--  <sync_request> This function does HTTP request
 --
 --  Parameters:
 --
@@ -103,7 +103,7 @@ end
 --              dns_cache_timeout                   - DNS cache timeout;
 --
 --  Returns:
---              {code=NUMBER, body=STRING}
+--              {code=NUMBER, body=STRING} or error()
 --
 local function sync_request(self, method, url, body, opts)
 
@@ -171,40 +171,7 @@ end
 curl_mt = {
   __index = {
     --
-    --  <request> This function does HTTP request
-    --
-    --  Parameters:
-    --
-    --    method  - HTTP method, like GET, POST, PUT and so on
-    --    url     - HTTP url, like https://tarantool.org/doc
-    --    options - this is a table of options <see async_request>.
-    --
-    --              curl:async_request(...)
-    --
-    --              write - a callback. if a server returns some data, then
-    --                      this function was being called.
-    --              Example:
-    --                function(data, context)
-    --                  context.in_buffer = context.in_buffer .. data
-    --                  return data:len()
-    --                end
-    --
-    --              read - a callback. if this client have to pass some
-    --                     data to a server, then this function was beign called.
-    --              Example:
-    --                function(content_size, context)
-    --                  local out_buffer = context.out_buffer
-    --                  local to_server = out_buffer:sub(1, content_size)
-    --                  context.out_buffer = out_buffer:sub(content_size + 1)
-    --                  return to_server
-    --                end
-    --
-    --              done - a callback. if request has completed, then this
-    --                     function was being called.
-    --
-    --              ctx - this is a user defined context.
-    --  Returns:
-    --     0 or raise an error
+    --  <request> see <sync_request>
     --
     request = function(self, method, url, body, options)
         if not method or not url then
@@ -214,26 +181,77 @@ curl_mt = {
     end,
 
     --
-    -- <get> - see <request>
+    -- <get> - see <sync_request>
     --
     get = function(self, url, options)
         return self:request('GET', url, '', options)
     end,
 
     --
-    -- <post> - see <request>
+    -- <post> - see <sync_request>
     --
     post = function(self, url, body, options)
         return self:request('POST', url, body, options)
     end,
 
     --
-    -- <put> - see <request>
+    -- <put> - see <sync_request>
     --
     put = function(self, url, body, options)
         return self:request('PUT', url, body, options)
     end,
 
+    --
+    --  <async_request> This function does HTTP request
+    --
+    --  Parameters:
+    --
+    --    method  - HTTP method, like GET, POST, PUT and so on
+    --    url     - HTTP url, like https://tarantool.org/doc
+    --    options - this is a table of options.
+    --
+    --      done - name of a callback function which is invoked when a request
+    --             was completed;
+    --
+    --      write - name of a callback function which is invoked if the
+    --              server returns data to the client;
+    --              signature is function(data, context)
+    --
+    --      read - name of a callback function which is invoked if the
+    --             client passes data to the server.
+    --             signature is function(content_size, context)
+    --
+    --      done - name of a callback function which is invoked when a request
+    --             was completed;
+    --             signature is  function(curl_code, http_code, error_message, ctx)
+    --
+    --      ca_path - a path to ssl certificate dir;
+    --
+    --      ca_file - a path to ssl certificate file;
+    --
+    --      headers - a table of HTTP headers;
+    --
+    --      max_conns - max amount of cached alive connections;
+    --
+    --      keepalive_idle & keepalive_interval - non-universal keepalive knobs (Linux, AIX, HP-UX, more);
+    --
+    --      low_speed_time & low_speed_limit - If the download receives less than "low speed limit" bytes/second
+    --                                         during "low speed time" seconds, the operations is aborted.
+    --                                         You could i.e if you have a pretty high speed connection, abort if
+    --                                         it is less than 2000 bytes/sec during 20 seconds;
+    --
+    --      read_timeout - Time-out the read operation after this amount of seconds;
+    --
+    --      connect_timeout  - Time-out connect operations after this amount of seconds, if connects are;
+    --                         OK within this time, then fine... This only aborts the connect phase;
+    --
+    --      dns_cache_timeout - DNS cache timeout;
+    --
+    --      curl_verbose - make libcurl verbose!;
+    --
+    --  Returns:
+    --     ok, msg or error()
+    --
     async_request = function(self, method, url, options)
         if not method or not url or not options then
             error('signature (method, url [, body [, options]])')
@@ -247,20 +265,54 @@ curl_mt = {
         return self.curl:async_request(method, url, options)
     end,
 
+    --
+    -- <async_get> - see <async_request>
+    --
     async_get = function(self, url, options)
         return self:async_request('GET', url, options)
     end,
 
+    --
+    -- <async_post> - see <async_request>
+    --
     async_post = function(self, url, options)
         return self:async_request('POST', url, options)
     end,
 
+    --
+    -- <async_put> - see <async_request>
+    --
     async_put = function(self, url, options)
         return self:async_request('PUT', url, options)
     end,
 
     --
     -- <stat> - this function returns a table with many values of statistic.
+    --
+    -- Returns {
+    --
+    --    active_requests - this is number of currently executing requests
+    --
+    --    sockets_added - this is a total number of added sockets into libev loop
+    --
+    --    sockets_deleted - this is a total number of deleted sockets from libev
+    --                      loop
+    --
+    --    loop_calls - this is a total number of iterations over libev loop
+    --
+    --    total_requests - this is a total number of requests
+    --
+    --    http_200_responses - this is a total number of requests which have
+    --                         returned a code HTTP 200
+    --
+    --    http_other_responses - this is a total number of requests which have
+    --                           requests not a HTTP 200
+    --
+    --    failed_requests - this is a total number of requests which have
+    --                      failed (included systeme erros, curl errors, HTTP
+    --                      erros and so on)
+    --  }
+    --  or error()
     --
     stat = function(self)
         return self.curl:stat()

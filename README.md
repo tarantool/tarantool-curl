@@ -63,14 +63,14 @@ Start Tarantool in the interactive mode. Execute these requests:
 ```lua
 curl = require('curl')
 http = curl.http()
-response = http:sync_request('GET', 'http://tarantool.org', '')
+response = http:request('GET', 'http://tarantool.org', '')
 response.code
 ```
 
 If all goes well, you should see:
 ```
 ...
-tarantool> response = http:sync_request('GET', 'http://tarantool.org', '')
+tarantool> response = http:request('GET', 'http://tarantool.org', '')
 ---
 ...
 
@@ -93,28 +93,58 @@ functions:
 * `request(method, url [, options])` -- Asynchronous data transfer 
   request. See details below.
 
-* `get_request(url [, options])` -- This is the same as `request('GET', 
+* `get(url [, options])` -- This is the same as `request('GET', 
   url [, options])`.
 
-* `sync_request(method, url [, body [, options]])` -- This is similar to 
-  `request(method, url [, options])` but it is synchronous.
+* `post(url, body [, options])` -- Post request, this is the same as 
+  `request('POST', url [, options]).`
 
-* `sync_post_request(url, body [, options])` -- post request
+* `put(url, body [, options])` -- Put request, this is the same as 
+  `request('PUT', url [, options]).`
 
-* `sync_put_request(url, body [, options])` -- put request
+* `async_request(self, method, url[, options])` -- This function does HTTP 
+  request. See details below.
 
-* `sync_get_request(url [, body [, options]])` -- This is the same as 
-  `sync_request('GET', url [, body [, options]])`.
+* `async_get(self, url, options)` -- This is the same as `async_request('GET', 
+  url [, options])`.
 
-* `stat()` -- This function returns a table with many values of statistic.
+* `async_post(self, url, options)` -- This is the same as `async_request('POST', 
+  url [, options])`.
 
-* `free` -- Should be called at the end of work.This function cleans all resources (i.e. destructor).
+* `async_put(self, url, options)` -- This is the same as `async_request('PUT', 
+  url [, options])`.
 
-The `request` and `get_request` functions return either (boolean) true, 
-or an error.
+* `stat()` -- This function returns a table with many values of statistic. See 
+  details below.
+```lua
+  local r = http:stat()
+  r = {
+    active_requests -- this is number of currently executing requests
 
-The `sync_request` and `sync_get_request` functions return a structured 
-object containing (numeric) code and (string) body, or an error.
+    sockets_added -- this is a total number of added sockets into libev loop
+
+    sockets_deleted -- this is a total number of deleted sockets from libev loop
+
+    loop_calls -- this is a total number of iterations over libev loop
+
+    total_requests -- this is a total number of requests
+
+    http_200_responses -- this is a total number of requests which have returned a code HTTP 200
+
+    http_other_responses -- this is a total number of requests which have requests not a HTTP 200
+
+    failed_requests -- this is a total number of requests which have
+                    -- failed (included systeme erros, curl errors, HTTP
+                    -- erros and so on)
+  }
+```
+
+* `free()` -- Should be called at the end of work. This function cleans all 
+  resources (i.e. destructor).
+
+The `request`, `get`, `post`, `put` functions return a table {code, body} or an error.
+
+The `async_request`, `async_get`, `async_post`, `async_put` functions return true either error.
 
 The parameters that can go with the operations are:
 
@@ -137,14 +167,37 @@ The parameters that can go with the operations are:
       `{headers = {['Content-type'] = 'application/json'}}`  
       Note: If you pass a value for the body parameter, you must set Content-Length header.
 
-    * `curl:async_request(...,)` - a further call;
+    * `keepalive_idle` & `keepalive_interval` - non-universal keepalive
+      knobs (Linux, AIX, HP-UX, more);
 
-    * `ctx` - user-defined context, with a format that openSSL
-      recognizes, which is passed to callback functions;
+    * `low_speed_time` & `low_speed_limit` - If the download receives
+      less than "low speed limit" bytes/second during "low speed time" seconds,
+      the operations is aborted. You could i.e if you have a pretty high speed
+      connection, abort if it is less than 2000 bytes/sec during 20 seconds;
+
+    * `read_timeout` - Time-out the read operation after this amount of seconds;
+
+    * `connect_timeout` - Time-out connect operations after this amount of
+      seconds, if connects are; OK within this time,
+      then fine... This only aborts the connect phase;
+
+    * `dns_cache_timeout` - DNS cache timeout;
+
+    * `curl:async_*(...,)` - a further call;
+
+    * `ctx` - user-defined context;
 
     * `done` - name of a callback function which is invoked when a request
       was completed;
-
+      ```lua
+      function done(curl_code, http_code, curl_error_message, my_ctx)
+        my_ctx.done          = true
+        my_ctx.http_code     = http_code
+        my_ctx.curl_code     = curl_code
+        my_ctx.error_message = curl_error_message
+        fiber.wakeup(my_ctx.callee_fiber_id)
+      end
+      ```
     * `write` - name of a callback function which is invoked if the
       server returns data to the client;
       For example, the `write` function might look like this:
@@ -166,22 +219,6 @@ The parameters that can go with the operations are:
         return to_server`
       end
       ```
-    * `keepalive_idle` & `keepalive_interval` - non-universal keepalive
-      knobs (Linux, AIX, HP-UX, more);
-
-    * `low_speed_time` & `low_speed_limit` - If the download receives
-      less than "low speed limit" bytes/second during "low speed time" seconds,
-      the operations is aborted. You could i.e if you have a pretty high speed
-      connection, abort if it is less than 2000 bytes/sec during 20 seconds;
-
-    * `read_timeout` - Time-out the read operation after this amount of seconds;
-
-    * `connect_timeout` - Time-out connect operations after this amount of
-      seconds, if connects are; OK within this time,
-      then fine... This only aborts the connect phase;
-
-    * `dns_cache_timeout` - DNS cache timeout;
-
 ## Example function
 
 In this example, we define a function named `d()` and make three GET requests:
@@ -192,9 +229,9 @@ In this example, we define a function named `d()` and make three GET requests:
 ```lua
 http = require('curl').http()
 function d() print('done') end
-result=http:request('GET','mail.ru',{done=d()})
-result=http:sync_request('GET','mail.ru','',{read_timeout=1,done=d())})
-result=http:sync_get_request('http://mail.ru/page1')
+result=http:async_request('GET','mail.ru',{done=d()})
+result=http:request('GET','mail.ru','',{read_timeout=1,done=d())})
+result=http:get('http://mail.ru/page1')
 ```
 
 ## Example program
@@ -207,10 +244,11 @@ In this example, we make two requests:
 #!/usr/bin/env tarantool
 local curl = require('curl')
 http = curl.http()
-res = http:sync_request('GET', 'mail.ru')
+res = http:request('GET', 'mail.ru')
 print('GET', res.body)
-res = http:sync_request('PUT', 'www.rbc.ru', '{data: 123}',
+res = http:request('PUT', 'www.rbc.ru', '{data: 123}',
    {headers = {['Content-type'] = 'application/json'}})
 print('PUT', res.body)
 ```
 
+More examples could be found into a directory tests/*.lua

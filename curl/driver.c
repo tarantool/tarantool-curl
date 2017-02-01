@@ -61,7 +61,56 @@ curl_ev_f(va_list ap)
 
 
 /*
- */
+   <async_request> This function does async HTTP request
+
+    Parameters:
+
+        method  - HTTP method, like GET, POST, PUT and so on
+        url     - HTTP url, like https://tarantool.org/doc
+        options - this is a table of options.
+
+            done - name of a callback function which is invoked when a request
+                   was completed;
+
+            write - name of a callback function which is invoked if the
+                    server returns data to the client;
+                    signature is function(data, context)
+
+            read - name of a callback function which is invoked if the
+                   client passes data to the server.
+                   signature is function(content_size, context)
+
+            done - name of a callback function which is invoked when a request
+                   was completed;
+                   signature is  function(curl_code, http_code, error_message, ctx)
+
+            ca_path - a path to ssl certificate dir;
+
+            ca_file - a path to ssl certificate file;
+
+            headers - a table of HTTP headers;
+
+            max_conns - max amount of cached alive connections;
+
+            keepalive_idle & keepalive_interval - non-universal keepalive knobs (Linux, AIX, HP-UX, more);
+
+            low_speed_time & low_speed_limit - If the download receives less than "low speed limit" bytes/second
+                                               during "low speed time" seconds, the operations is aborted.
+                                               You could i.e if you have a pretty high speed connection, abort if
+                                               it is less than 2000 bytes/sec during 20 seconds;
+
+            read_timeout - Time-out the read operation after this amount of seconds;
+
+            connect_timeout  - Time-out connect operations after this amount of seconds, if connects are;
+                               OK within this time, then fine... This only aborts the connect phase;
+
+            dns_cache_timeout - DNS cache timeout;
+
+            curl_verbose - make libcurl verbose!;
+
+        Returns:
+              bool, msg or error()
+*/
 static
 int
 async_request(lua_State *L)
@@ -273,8 +322,8 @@ get_stat(lua_State *L)
     lua_newtable(L);
 
     add_field_u64(L, "active_requests", (uint64_t) l->stat.active_requests);
-    add_field_u64(L, "socket_added", (uint64_t) l->stat.sockets_added);
-    add_field_u64(L, "socket_deleted", (uint64_t) l->stat.sockets_deleted);
+    add_field_u64(L, "sockets_added", (uint64_t) l->stat.sockets_added);
+    add_field_u64(L, "sockets_deleted", (uint64_t) l->stat.sockets_deleted);
     add_field_u64(L, "loop_calls", (uint64_t) l->stat.loop_calls);
     add_field_u64(L, "total_requests", l->stat.total_requests);
     add_field_u64(L, "http_200_responses",  l->stat.http_200_responses);
