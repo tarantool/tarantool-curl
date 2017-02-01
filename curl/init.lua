@@ -41,8 +41,8 @@ local curl_mt
 --  Returns:
 --     curl object or raise error
 --
-local http = function()
-  curl = curl_driver.new()
+local http = function(pipeline, max_conns)
+  curl = curl_driver.new(pipeline or 0, max_conns or 5)
   local ok, version = curl:version()
   if not ok then
     error("can't get curl:version()")
@@ -142,6 +142,7 @@ local function sync_request(self, method, url, body, opts)
                                    connect_timeout    = opts.connect_timeout,
                                    dns_cache_timeout  = opts.dns_cache_timeout,
                                    curl_verbose       = opts.curl_verbose, } )
+
     -- Curl can't add a new request
     if not ok then
         error("curl has an internal error, msg = " .. emsg)

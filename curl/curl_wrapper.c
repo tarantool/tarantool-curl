@@ -114,7 +114,7 @@ multi_timer_cb(CURLM *multi __attribute__((unused)),
 {
     dd("timeout_ms = %li", timeout_ms);
 
-    lib_ctx_t *l = (lib_ctx_t *)ctx;
+    lib_ctx_t *l = (lib_ctx_t *) ctx;
 
     ev_timer_stop(l->loop, &l->timer_event);
     if (timeout_ms > 0) {
@@ -225,12 +225,9 @@ timer_cb(EV_P_ struct ev_timer *w, int revents __attribute__((unused)))
 
     dd("w = %p, revents = %i", (void *) w, revents);
 
-    lib_ctx_t *l = (lib_ctx_t *)w->data;
-    CURLMcode rc;
-
-    rc = curl_multi_socket_action(l->multi, CURL_SOCKET_TIMEOUT, 0,
-                                  &l->still_running);
-
+    lib_ctx_t *l = (lib_ctx_t *) w->data;
+    CURLMcode rc = curl_multi_socket_action(l->multi, CURL_SOCKET_TIMEOUT, 0,
+                                            &l->still_running);
     if (!is_mcode_good(rc))
         ++l->stat.failed_requests;
 
@@ -292,11 +289,14 @@ static
 bool
 addsock(curl_socket_t s, CURL *easy, int action, lib_ctx_t *l)
 {
-    sock_t *fdp = (sock_t *) calloc(sizeof(sock_t), 1);
+    sock_t *fdp = (sock_t *) malloc(sizeof(sock_t));
     if (fdp == NULL)
         return false;
 
+    memset(fdp, 0, sizeof(sock_t));
+
     fdp->lib_ctx = l;
+
     setsock(fdp, s, easy, action, l);
 
     curl_multi_assign(l->multi, s, fdp);
@@ -376,14 +376,14 @@ write_cb(void *ptr, size_t size, size_t nmemb, void *ctx)
 {
     dd("size = %zu, nmemb = %zu", size, nmemb);
 
-    conn_t       *c    = (conn_t *)ctx;
+    conn_t       *c    = (conn_t *) ctx;
     const size_t bytes = size * nmemb;
 
     if (c->lua_ctx.write_fn == LUA_REFNIL)
         return bytes;
 
     lua_rawgeti(c->lua_ctx.L, LUA_REGISTRYINDEX, c->lua_ctx.write_fn);
-    lua_pushlstring(c->lua_ctx.L, ptr, bytes);
+    lua_pushlstring(c->lua_ctx.L, (const char *) ptr, bytes);
     lua_rawgeti(c->lua_ctx.L, LUA_REGISTRYINDEX, c->lua_ctx.fn_ctx);
     lua_pcall(c->lua_ctx.L, 2, 1, 0);
     const size_t written = lua_tointeger(c->lua_ctx.L,
@@ -399,12 +399,10 @@ new_conn(lib_ctx_t *l __attribute__((unused)))
 {
     assert(l);
 
-    conn_t *c = (conn_t *) calloc(1, sizeof(conn_t));
+    conn_t *c = (conn_t *) malloc(sizeof(conn_t));
     if (c == NULL)
         return NULL;
-
-    c->error[0] = 0;
-    c->headers  = NULL;
+    memset(c, 0, sizeof(conn_t));
 
     c->easy = curl_easy_init();
     if (c->easy == NULL) {
@@ -464,15 +462,16 @@ conn_start(lib_ctx_t *l, conn_t *c, const conn_start_args_t *a)
     if (a->max_conns > 0)
         curl_easy_setopt(c->easy, CURLOPT_MAXCONNECTS, a->max_conns);
 
+#if (LIBCURL_VERSION_MAJOR >= 7 && \
+     LIBCURL_VERSION_MINOR >= 25 && \
+     LIBCURL_VERSION_PATCH >= 0 )
+
     if (a->keepalive_idle > 0 && a->keepalive_interval > 0) {
 
-#if LIBCURL_VERSION_MAJOR >= 7 && LIBCURL_VERSION_MINOR >= 25 && LIBCURL_VERSION_PATCH >= 0
         curl_easy_setopt(c->easy, CURLOPT_TCP_KEEPALIVE, 1L);
         curl_easy_setopt(c->easy, CURLOPT_TCP_KEEPIDLE, a->keepalive_idle);
         curl_easy_setopt(c->easy, CURLOPT_TCP_KEEPINTVL,
                                   a->keepalive_interval);
-#endif
-
         if (!conn_add_header(c, "Connection: Keep-Alive") &&
             !conn_add_header_keepaive(c, a))
         {
@@ -485,6 +484,8 @@ conn_start(lib_ctx_t *l, conn_t *c, const conn_start_args_t *a)
             return CURLM_OUT_OF_MEMORY;
         }
     }
+
+#endif /* > 7.25.0 */
 
     if (a->read_timeout > 0)
         curl_easy_setopt(c->easy, CURLOPT_TIMEOUT, a->read_timeout);
@@ -567,8 +568,10 @@ error_exit:
 
 
 lib_ctx_t*
-lib_new(void)
+lib_new(const lib_new_args_t *a)
 {
+    assert(a);
+
     lib_ctx_t *l = (lib_ctx_t *) malloc(sizeof(lib_ctx_t));
     if (l == NULL)
         return NULL;
@@ -576,6 +579,8 @@ lib_new(void)
     memset(l, 0, sizeof(lib_ctx_t));
 
     l->loop = ev_loop_new(0);
+    if (l->loop == NULL)
+        goto error_exit;
 
     l->multi = curl_multi_init();
     if (l->multi == NULL)
@@ -590,12 +595,15 @@ lib_new(void)
     curl_multi_setopt(l->multi, CURLMOPT_TIMERFUNCTION, multi_timer_cb);
     curl_multi_setopt(l->multi, CURLMOPT_TIMERDATA, (void *) l);
 
-    curl_multi_setopt(l->multi, CURLMOPT_PIPELINING, 1L /* pipline on */);
+    if (a->pipeline)
+        curl_multi_setopt(l->multi, CURLMOPT_PIPELINING, 1L /* pipline on */);
 
     return l;
 
 error_exit:
-    lib_free(l);
+    if (l != NULL)
+        lib_free(l);
+
     return NULL;
 }
 

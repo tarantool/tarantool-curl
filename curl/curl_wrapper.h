@@ -101,7 +101,12 @@ typedef struct {
 } conn_start_args_t;
 
 
-lib_ctx_t* lib_new(void);
+typedef struct {
+  bool pipeline;
+  long max_conns;
+} lib_new_args_t;
+
+lib_ctx_t* lib_new(const lib_new_args_t *a);
 void lib_free(lib_ctx_t *l);
 void lib_loop(lib_ctx_t *l, double timeout);
 void lib_print_stat(lib_ctx_t *l, FILE* out);
@@ -152,7 +157,7 @@ conn_set_post(conn_t *c)
   assert(c->easy);
   if (!conn_add_header(c, "Accept: */*"))
     return false;
-  curl_easy_setopt(c->easy, CURLOPT_POST, 1);
+  curl_easy_setopt(c->easy, CURLOPT_POST, 1L);
   return true;
 }
 
@@ -164,7 +169,7 @@ conn_set_put(conn_t *c)
   assert(c->easy);
   if (!conn_add_header(c, "Accept: */*"))
     return false;
-  curl_easy_setopt(c->easy, CURLOPT_UPLOAD, 1);
+  curl_easy_setopt(c->easy, CURLOPT_UPLOAD, 1L);
   return true;
 }
 

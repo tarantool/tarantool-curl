@@ -38,7 +38,6 @@
 #include <assert.h>
 #include <errno.h>
 
-//#define MY_DEBUG 1
 #if defined(MY_DEBUG)
 
 # define dd(...) do { \

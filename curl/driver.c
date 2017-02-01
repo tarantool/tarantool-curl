@@ -88,6 +88,7 @@ tnt_lib_async_request(lua_State *L)
     /** Set Options {{{
      */
     if (lua_istable(L, 4)) {
+
         const int top = lua_gettop(L);
 
         c->lua_ctx.L = L;
@@ -95,25 +96,25 @@ tnt_lib_async_request(lua_State *L)
         /* Read callback */
         lua_pushstring(L, "read");
         lua_gettable(L, 4);
-        if (lua_isfunction(L, top + 1)) {
+        if (lua_isfunction(L, top + 1))
             c->lua_ctx.read_fn = luaL_ref(L, LUA_REGISTRYINDEX);
-        } else
+        else
             lua_pop(L, 1);
 
         /* Write callback */
         lua_pushstring(L, "write");
         lua_gettable(L, 4);
-        if (lua_isfunction(L, top + 1)) {
+        if (lua_isfunction(L, top + 1))
             c->lua_ctx.write_fn = luaL_ref(L, LUA_REGISTRYINDEX);
-        } else
+        else
             lua_pop(L, 1);
 
         /* Done callback */
         lua_pushstring(L, "done");
         lua_gettable(L, 4);
-        if (lua_isfunction(L, top + 1)) {
+        if (lua_isfunction(L, top + 1))
             c->lua_ctx.done_fn = luaL_ref(L, LUA_REGISTRYINDEX);
-        } else
+        else
             lua_pop(L, 1);
 
         /* callback's context */
@@ -212,7 +213,7 @@ tnt_lib_async_request(lua_State *L)
     }
     /* }}} */
 
-    curl_easy_setopt(c->easy, CURLOPT_PRIVATE, (void *)c);
+    curl_easy_setopt(c->easy, CURLOPT_PRIVATE, (void *) c);
 
     curl_easy_setopt(c->easy, CURLOPT_URL, url);
     curl_easy_setopt(c->easy, CURLOPT_FOLLOWLOCATION, 1);
@@ -341,7 +342,14 @@ tnt_lib_new(lua_State *L)
     ctx->fiber   = NULL;
     ctx->done    = false;
 
-    ctx->lib_ctx = lib_new();
+    lib_new_args_t args = {.pipeline = false,
+                           .max_conns = 5 };
+
+    /* pipeline: 1 - on, 0 - off */
+    args.pipeline  = (bool) luaL_checkint(L, 1);
+    args.max_conns = luaL_checklong(L, 2);
+
+    ctx->lib_ctx = lib_new(&args);
     if (ctx->lib_ctx == NULL) {
         reason = "lib_new failed";
         goto error_exit;
