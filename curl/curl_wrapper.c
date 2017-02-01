@@ -484,8 +484,7 @@ conn_start(conn_t *c, const conn_start_args_t *a)
 
 #else /* > 7.25.0 */
 
-    if (a->keepalive_idle > 0 && a->keepalive_interval > 0)
-        curl_easy_setopt(c->easy, CURLOPT_TCP_KEEPALIVE, 1L);
+    if (a->keepalive_idle > 0 && a->keepalive_interval > 0) { }
 
 #endif
 
