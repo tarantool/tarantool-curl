@@ -29,52 +29,58 @@
  * SUCH DAMAGE.
  */
 
-#include <stdio.h>
-#include "curl_wrapper.h"
+#ifndef REQUEST_POOL_H_INCLUDED
+#define REQUEST_POOL_H_INCLUDED 1
 
-#define say_(...) do { \
-    fprintf(stderr, __VA_ARGS__); \
-    fprintf(stderr, "\n"); \
-} while(0)
+#include <stdlib.h>
+#include <stdbool.h>
+#include <inttypes.h>
+
+#include <lua.h>
+#include <lualib.h>
+#include <lauxlib.h>
+
+#include <curl/curl.h>
+
+struct curl_ctx_s;
+
+typedef struct {
+
+  /* pool meta info */
+  struct {
+    size_t idx;
+    bool   busy;
+  } pool;
+
+  /** Information associated with a specific easy handle */
+  CURL       *easy;
+
+  /* Reference to curl context */
+  struct curl_ctx_s *curl_ctx;
+
+  /* Callbacks from lua and Lua context */
+  struct {
+    lua_State *L;
+    int       read_fn;
+    int       write_fn;
+    int       done_fn;
+    int       fn_ctx;
+  } lua_ctx;
+
+  /* HTTP headers */
+  struct curl_slist *headers;
+} request_t;
+
+typedef struct {
+  request_t  *mem;
+  size_t     size;
+} request_pool_t;
 
 
-static inline
-void
-basic_features(void)
-{
-    say_("[+] basic_features");
+bool request_pool_new(request_pool_t *p, struct curl_ctx_s *c, size_t s);
+void request_pool_free(request_pool_t *p);
 
-    curl_ctx_t *l = curl_ctx_new_easy();
+request_t* request_pool_get_request(request_pool_t *p);
+void request_pool_free_request(request_pool_t *p, request_t *c);
 
-    for (;;) {
-#if defined (MY_DEBUG)
-        new_request_test(l, "127.0.0.1:10000/");
-#endif
-        if (l->stat.active_requests > 10)
-            break;
-        curl_poll_one(l);
-    }
-
-    for (;;) {
-        if (l->stat.active_requests == 0)
-            break;
-        curl_poll_one(l);
-    }
-
-    curl_print_stat(l, stderr);
-
-    assert(l->stat.active_requests == 0);
-    assert(l->stat.sockets_deleted == l->stat.sockets_added);
-
-    say_("[+] finished");
-
-    curl_destroy(l);
-}
-
-
-int main(int argc __attribute__((unused)),
-         char ** argv __attribute__((unused)))
-{
-    basic_features();
-    return 0;
-}
+#endif /* REQUEST_POOL_H_INCLUDED */

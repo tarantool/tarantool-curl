@@ -15,7 +15,7 @@ local fiber = require('fiber')
 local json  = require('json')
 local os    = require('os')
 
-local http = curl.http()
+local http = curl.http({pool_size=1})
 
 print(http.VERSION)
 

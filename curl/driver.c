@@ -47,15 +47,6 @@ curl_ev_f(va_list ap)
         fiber_sleep(0.001);
     }
 
-    /** Finishing all requests
-     */
-    for (;;) {
-        if (ctx->curl_ctx->stat.active_requests == 0)
-            break;
-        curl_poll_one(ctx->curl_ctx);
-        fiber_sleep(0.001);
-    }
-
     return 0;
 }
 
@@ -124,12 +115,12 @@ async_request(lua_State *L)
     if (ctx->done)
         return luaL_error(L, "curl stopped");
 
-    conn_t *c = new_conn(ctx->curl_ctx);
-    if (c == NULL)
-        return luaL_error(L, "can't allocate conn_t");
+    request_t *r = new_request(ctx->curl_ctx);
+    if (r == NULL)
+        return luaL_error(L, "can't get request obj from pool");
 
-    conn_start_args_t conn_args;
-    conn_start_args_init(&conn_args);
+    request_start_args_t req_args;
+    request_start_args_init(&req_args);
 
     const char *method = luaL_checkstring(L, 2);
     const char *url    = luaL_checkstring(L, 3);
@@ -140,13 +131,13 @@ async_request(lua_State *L)
 
         const int top = lua_gettop(L);
 
-        c->lua_ctx.L = L;
+        r->lua_ctx.L = L;
 
         /* Read callback */
         lua_pushstring(L, "read");
         lua_gettable(L, 4);
         if (lua_isfunction(L, top + 1))
-            c->lua_ctx.read_fn = luaL_ref(L, LUA_REGISTRYINDEX);
+            r->lua_ctx.read_fn = luaL_ref(L, LUA_REGISTRYINDEX);
         else
             lua_pop(L, 1);
 
@@ -154,7 +145,7 @@ async_request(lua_State *L)
         lua_pushstring(L, "write");
         lua_gettable(L, 4);
         if (lua_isfunction(L, top + 1))
-            c->lua_ctx.write_fn = luaL_ref(L, LUA_REGISTRYINDEX);
+            r->lua_ctx.write_fn = luaL_ref(L, LUA_REGISTRYINDEX);
         else
             lua_pop(L, 1);
 
@@ -162,14 +153,14 @@ async_request(lua_State *L)
         lua_pushstring(L, "done");
         lua_gettable(L, 4);
         if (lua_isfunction(L, top + 1))
-            c->lua_ctx.done_fn = luaL_ref(L, LUA_REGISTRYINDEX);
+            r->lua_ctx.done_fn = luaL_ref(L, LUA_REGISTRYINDEX);
         else
             lua_pop(L, 1);
 
         /* callback's context */
         lua_pushstring(L, "ctx");
         lua_gettable(L, 4);
-        c->lua_ctx.fn_ctx = luaL_ref(L, LUA_REGISTRYINDEX);
+        r->lua_ctx.fn_ctx = luaL_ref(L, LUA_REGISTRYINDEX);
 
         /** Http headers */
         lua_pushstring(L, "headers");
@@ -180,8 +171,8 @@ async_request(lua_State *L)
             while (lua_next(L, -2) != 0) {
                 snprintf(header, sizeof(header) - 1,
                         "%s: %s", lua_tostring(L, -2), lua_tostring(L, -1));
-                if (!conn_add_header(c, header)) {
-                    reason = "can't allocate memory (conn_add_header)";
+                if (!request_add_header(r, header)) {
+                    reason = "can't allocate memory (request_add_header)";
                     goto error_exit;
                 }
                 lua_pop(L, 1);
@@ -193,96 +184,99 @@ async_request(lua_State *L)
         lua_pushstring(L, "ca_path");
         lua_gettable(L, 4);
         if (!lua_isnil(L, top + 1))
-            curl_easy_setopt(c->easy, CURLOPT_CAPATH,
+            curl_easy_setopt(r->easy, CURLOPT_CAPATH,
                              lua_tostring(L, top + 1));
         lua_pop(L, 1);
 
         lua_pushstring(L, "ca_file");
         lua_gettable(L, 4);
         if (!lua_isnil(L, top + 1))
-          curl_easy_setopt(c->easy, CURLOPT_CAINFO,
-                           lua_tostring(L, top + 1));
+            curl_easy_setopt(r->easy, CURLOPT_CAINFO,
+                             lua_tostring(L, top + 1));
         lua_pop(L, 1);
         /* }}} */
 
         lua_pushstring(L, "max_conns");
         lua_gettable(L, 4);
         if (!lua_isnil(L, top + 1))
-          conn_args.max_conns = (long) lua_tointeger(L, top + 1);
+            req_args.max_conns = (long) lua_tointeger(L, top + 1);
         lua_pop(L, 1);
 
         lua_pushstring(L, "keepalive_idle");
         lua_gettable(L, 4);
         if (!lua_isnil(L, top + 1))
-          conn_args.keepalive_idle = (long) lua_tointeger(L, top + 1);
+            req_args.keepalive_idle = (long) lua_tointeger(L, top + 1);
         lua_pop(L, 1);
 
         lua_pushstring(L, "keepalive_interval");
         lua_gettable(L, 4);
         if (!lua_isnil(L, top + 1))
-          conn_args.keepalive_interval = (long) lua_tointeger(L, top + 1);
+            req_args.keepalive_interval = (long) lua_tointeger(L, top + 1);
         lua_pop(L, 1);
 
         lua_pushstring(L, "low_speed_limit");
         lua_gettable(L, 4);
         if (!lua_isnil(L, top + 1))
-          conn_args.low_speed_limit = (long) lua_tointeger(L, top + 1);
+            req_args.low_speed_limit = (long) lua_tointeger(L, top + 1);
         lua_pop(L, 1);
 
         lua_pushstring(L, "low_speed_time");
         lua_gettable(L, 4);
         if (!lua_isnil(L, top + 1))
-          conn_args.low_speed_time = (long) lua_tointeger(L, top + 1);
+            req_args.low_speed_time = (long) lua_tointeger(L, top + 1);
         lua_pop(L, 1);
 
         lua_pushstring(L, "read_timeout");
         lua_gettable(L, 4);
         if (!lua_isnil(L, top + 1))
-          conn_args.read_timeout = (long) lua_tointeger(L, top + 1);
+            req_args.read_timeout = (long) lua_tointeger(L, top + 1);
         lua_pop(L, 1);
 
         lua_pushstring(L, "connect_timeout");
         lua_gettable(L, 4);
         if (!lua_isnil(L, top + 1))
-          conn_args.connect_timeout = (long) lua_tointeger(L, top + 1);
+            req_args.connect_timeout = (long) lua_tointeger(L, top + 1);
         lua_pop(L, 1);
 
         lua_pushstring(L, "dns_cache_timeout");
         lua_gettable(L, 4);
         if (!lua_isnil(L, top + 1))
-          conn_args.dns_cache_timeout = (long) lua_tointeger(L, top + 1);
+            req_args.dns_cache_timeout = (long) lua_tointeger(L, top + 1);
         lua_pop(L, 1);
 
         /* Debug- / Internal- options */
         lua_pushstring(L, "curl_verbose");
         lua_gettable(L, 4);
         if (!lua_isnil(L, top + 1) && lua_isboolean(L, top + 1))
-          conn_args.curl_verbose = true;
+            req_args.curl_verbose = true;
         lua_pop(L, 1);
+    } else {
+        reason = "4-arg have to be a table";
+        goto error_exit;
     }
     /* }}} */
 
-    curl_easy_setopt(c->easy, CURLOPT_PRIVATE, (void *) c);
+    curl_easy_setopt(r->easy, CURLOPT_PRIVATE, (void *) r);
 
-    curl_easy_setopt(c->easy, CURLOPT_URL, url);
-    curl_easy_setopt(c->easy, CURLOPT_FOLLOWLOCATION, 1);
+    curl_easy_setopt(r->easy, CURLOPT_URL, url);
+    curl_easy_setopt(r->easy, CURLOPT_FOLLOWLOCATION, 1);
 
-    curl_easy_setopt(c->easy, CURLOPT_SSL_VERIFYPEER, 1);
+    curl_easy_setopt(r->easy, CURLOPT_SSL_VERIFYPEER, 1);
 
     /* Method {{{ */
 
     if (*method == 'G') {
-      curl_easy_setopt(c->easy, CURLOPT_HTTPGET, 1);
+      curl_easy_setopt(r->easy, CURLOPT_HTTPGET, 1);
     }
     else if (strcmp(method, "POST") == 0) {
-        if (!conn_set_post(c)) {
-            reason = "can't allocate memory (conn_set_post)";
+        if (!request_set_post(r)) {
+            reason = "can't allocate memory (request_set_post)";
             goto error_exit;
         }
     }
     else if (strcmp(method, "PUT") == 0) {
-        if (!conn_set_put(c)) {
-            reason = "can't allocate memory (conn_set_put)";
+        if (!request_set_put(r)) {
+            reason = "can't allocate memory (request_set_put)";
             goto error_exit;
         }
     } else {
@@ -295,14 +289,14 @@ async_request(lua_State *L)
      * time-out to trigger very soon so that
      * the necessary socket_action() call will be
      * called by this app */
-    CURLMcode rc = conn_start(c, &conn_args);
+    CURLMcode rc = request_start(r, &req_args);
     if (rc != CURLM_OK)
         goto error_exit;
 
     return curl_make_result(L, CURL_LAST, rc);
+
 error_exit:
-    if (c)
-        free_conn(c);
+    free_request(ctx->curl_ctx, r);
     return luaL_error(L, reason);
 }
 
@@ -382,17 +376,17 @@ new(lua_State *L)
     ctx->done    = false;
 
     curl_args_t args = { .pipeline = false,
-                         .max_conns = 5 };
+                         .max_conns = 5,
+                         .pool_size = 10000 };
 
     /* pipeline: 1 - on, 0 - off */
     args.pipeline  = (bool) luaL_checkint(L, 1);
     args.max_conns = luaL_checklong(L, 2);
+    args.pool_size = (size_t) luaL_checklong(L, 3);
 
     ctx->curl_ctx = curl_ctx_new(&args);
-    if (ctx->curl_ctx == NULL) {
-        reason = "curl_new failed";
-        goto error_exit;
-    }
+    if (ctx->curl_ctx == NULL)
+        return luaL_error(L, "curl_new failed");
 
     ctx->fiber = fiber_new("__curl_ev_fiber", curl_ev_f);
     if (ctx->fiber == NULL) {

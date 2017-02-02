@@ -1,5 +1,6 @@
 # Driver
 add_library(driver SHARED curl_wrapper.c
+                          request_pool.c
                           driver.c )
 target_link_libraries(driver ${CURL_LIBRARIES}
                              ${LIBEV_LIBRARIES}

@@ -29,12 +29,11 @@
  * SUCH DAMAGE.
  */
 
-#include <stdlib.h>
-#include <string.h>
-
 #include "debug.h"
 #include "curl_wrapper.h"
 
+#include <stdlib.h>
+#include <string.h>
 
 /** Information associated with a specific socket
  */
@@ -135,11 +134,11 @@ static
 void
 check_multi_info(curl_ctx_t *l)
 {
-    char    *eff_url;
-    CURLMsg *msg;
-    int     msgs_left;
-    conn_t  *c;
-    long    http_code;
+    char       *eff_url;
+    CURLMsg    *msg;
+    int        msgs_left;
+    request_t  *r;
+    long       http_code;
 
     dd("REMAINING: still_running = %d", l->still_running);
 
@@ -151,12 +150,12 @@ check_multi_info(curl_ctx_t *l)
         CURL     *easy     = msg->easy_handle;
         CURLcode curl_code = msg->data.result;
 
-        curl_easy_getinfo(easy, CURLINFO_PRIVATE, (void *) &c);
+        curl_easy_getinfo(easy, CURLINFO_PRIVATE, (void *) &r);
         curl_easy_getinfo(easy, CURLINFO_EFFECTIVE_URL, &eff_url);
         curl_easy_getinfo(easy, CURLINFO_RESPONSE_CODE, &http_code);
 
-        dd("DONE: url = %s, curl_code = %d, error = %s, http_code = %d",
-                eff_url, curl_code, c->error, (int) http_code);
+        dd("DONE: url = %s, curl_code = %d, http_code = %d",
+                eff_url, curl_code, (int) http_code);
 
         if (curl_code != CURLE_OK)
             ++l->stat.failed_requests;
@@ -166,21 +165,20 @@ check_multi_info(curl_ctx_t *l)
         else
             ++l->stat.http_other_responses;
 
-        if (c->lua_ctx.done_fn != LUA_REFNIL) {
-
+        if (r->lua_ctx.done_fn != LUA_REFNIL) {
             /*
               Signature:
                 function (curl_code, http_code, error_message, ctx)
             */
-            lua_rawgeti(c->lua_ctx.L, LUA_REGISTRYINDEX, c->lua_ctx.done_fn);
-            lua_pushinteger(c->lua_ctx.L, (int) curl_code);
-            lua_pushinteger(c->lua_ctx.L, (int) http_code);
-            lua_pushstring(c->lua_ctx.L, curl_easy_strerror(curl_code));
-            lua_rawgeti(c->lua_ctx.L, LUA_REGISTRYINDEX, c->lua_ctx.fn_ctx);
-            lua_pcall(c->lua_ctx.L, 4, 0 ,0);
+            lua_rawgeti(r->lua_ctx.L, LUA_REGISTRYINDEX, r->lua_ctx.done_fn);
+            lua_pushinteger(r->lua_ctx.L, (int) curl_code);
+            lua_pushinteger(r->lua_ctx.L, (int) http_code);
+            lua_pushstring(r->lua_ctx.L, curl_easy_strerror(curl_code));
+            lua_rawgeti(r->lua_ctx.L, LUA_REGISTRYINDEX, r->lua_ctx.fn_ctx);
+            lua_pcall(r->lua_ctx.L, 4, 0 ,0);
         }
 
-        free_conn(c);
+        free_request(l, r);
     } /* while */
 }
 
@@ -347,22 +345,22 @@ read_cb(void *ptr, size_t size, size_t nmemb, void *ctx)
 {
     dd("size = %zu, nmemb = %zu", size, nmemb);
 
-    conn_t       *c         = (conn_t *)ctx;
+    request_t    *r         = (request_t *) ctx;
     const size_t total_size = size * nmemb;
 
-    if (c->lua_ctx.read_fn == LUA_REFNIL)
+    if (r->lua_ctx.read_fn == LUA_REFNIL)
         return total_size;
 
-    lua_rawgeti(c->lua_ctx.L, LUA_REGISTRYINDEX, c->lua_ctx.read_fn);
-    lua_pushnumber(c->lua_ctx.L, total_size);
-    lua_rawgeti(c->lua_ctx.L, LUA_REGISTRYINDEX, c->lua_ctx.fn_ctx);
-    lua_pcall(c->lua_ctx.L, 2, 1, 0);
+    lua_rawgeti(r->lua_ctx.L, LUA_REGISTRYINDEX, r->lua_ctx.read_fn);
+    lua_pushnumber(r->lua_ctx.L, total_size);
+    lua_rawgeti(r->lua_ctx.L, LUA_REGISTRYINDEX, r->lua_ctx.fn_ctx);
+    lua_pcall(r->lua_ctx.L, 2, 1, 0);
 
     size_t readen;
-    const char *data = lua_tolstring(c->lua_ctx.L,
-                                     lua_gettop(c->lua_ctx.L), &readen);
+    const char *data = lua_tolstring(r->lua_ctx.L,
+                                     lua_gettop(r->lua_ctx.L), &readen);
     memcpy(ptr, data, readen);
-    lua_pop(c->lua_ctx.L, 1);
+    lua_pop(r->lua_ctx.L, 1);
 
     return readen;
 }
@@ -374,90 +372,34 @@ write_cb(void *ptr, size_t size, size_t nmemb, void *ctx)
 {
     dd("size = %zu, nmemb = %zu", size, nmemb);
 
-    conn_t       *c    = (conn_t *) ctx;
+    request_t    *r    = (request_t *) ctx;
     const size_t bytes = size * nmemb;
 
-    if (c->lua_ctx.write_fn == LUA_REFNIL)
+    if (r->lua_ctx.write_fn == LUA_REFNIL)
         return bytes;
 
-    lua_rawgeti(c->lua_ctx.L, LUA_REGISTRYINDEX, c->lua_ctx.write_fn);
-    lua_pushlstring(c->lua_ctx.L, (const char *) ptr, bytes);
-    lua_rawgeti(c->lua_ctx.L, LUA_REGISTRYINDEX, c->lua_ctx.fn_ctx);
-    lua_pcall(c->lua_ctx.L, 2, 1, 0);
-    const size_t written = lua_tointeger(c->lua_ctx.L,
-                                         lua_gettop(c->lua_ctx.L));
-    lua_pop(c->lua_ctx.L, 1);
+    lua_rawgeti(r->lua_ctx.L, LUA_REGISTRYINDEX, r->lua_ctx.write_fn);
+    lua_pushlstring(r->lua_ctx.L, (const char *) ptr, bytes);
+    lua_rawgeti(r->lua_ctx.L, LUA_REGISTRYINDEX, r->lua_ctx.fn_ctx);
+    lua_pcall(r->lua_ctx.L, 2, 1, 0);
+    const size_t written = lua_tointeger(r->lua_ctx.L,
+                                         lua_gettop(r->lua_ctx.L));
+    lua_pop(r->lua_ctx.L, 1);
 
     return written;
 }
 
 
-conn_t*
-new_conn(curl_ctx_t *l)
-{
-    assert(l);
-
-    conn_t *c = (conn_t *) malloc(sizeof(conn_t));
-    if (c == NULL)
-        return NULL;
-    memset(c, 0, sizeof(conn_t));
-
-    c->easy = curl_easy_init();
-    if (c->easy == NULL) {
-        free(c);
-        return NULL;
-    }
-
-    c->curl_ctx = l;
-
-    c->lua_ctx.L        = NULL;
-    c->lua_ctx.read_fn  = LUA_REFNIL;
-    c->lua_ctx.write_fn = LUA_REFNIL;
-    c->lua_ctx.done_fn  = LUA_REFNIL;
-    c->lua_ctx.fn_ctx   = LUA_REFNIL;
-
-    return c;
-}
-
-
-void
-free_conn(conn_t *c)
-{
-    assert(c);
-
-    if (c->curl_ctx) {
-        --c->curl_ctx->stat.active_requests;
-        if (c->curl_ctx->multi && c->easy)
-            curl_multi_remove_handle(c->curl_ctx->multi, c->easy);
-    }
-
-    if (c->easy)
-        curl_easy_cleanup(c->easy);
-
-    if (c->headers)
-        curl_slist_free_all(c->headers);
-
-    if (c->lua_ctx.L) {
-        luaL_unref(c->lua_ctx.L, LUA_REGISTRYINDEX, c->lua_ctx.read_fn);
-        luaL_unref(c->lua_ctx.L, LUA_REGISTRYINDEX, c->lua_ctx.write_fn);
-        luaL_unref(c->lua_ctx.L, LUA_REGISTRYINDEX, c->lua_ctx.done_fn);
-        luaL_unref(c->lua_ctx.L, LUA_REGISTRYINDEX, c->lua_ctx.fn_ctx);
-    }
-
-    free(c);
-}
-
-
 CURLMcode
-conn_start(conn_t *c, const conn_start_args_t *a)
+request_start(request_t *r, const request_start_args_t *a)
 {
     assert(c);
     assert(a);
-    assert(c->easy);
-    assert(c->curl_ctx);
+    assert(r->easy);
+    assert(r->curl_ctx);
 
     if (a->max_conns > 0)
-        curl_easy_setopt(c->easy, CURLOPT_MAXCONNECTS, a->max_conns);
+        curl_easy_setopt(r->easy, CURLOPT_MAXCONNECTS, a->max_conns);
 
 #if (LIBCURL_VERSION_MAJOR >= 7 && \
      LIBCURL_VERSION_MINOR >= 25 && \
@@ -465,19 +407,19 @@ conn_start(conn_t *c, const conn_start_args_t *a)
 
     if (a->keepalive_idle > 0 && a->keepalive_interval > 0) {
 
-        curl_easy_setopt(c->easy, CURLOPT_TCP_KEEPALIVE, 1L);
-        curl_easy_setopt(c->easy, CURLOPT_TCP_KEEPIDLE, a->keepalive_idle);
-        curl_easy_setopt(c->easy, CURLOPT_TCP_KEEPINTVL,
+        curl_easy_setopt(r->easy, CURLOPT_TCP_KEEPALIVE, 1L);
+        curl_easy_setopt(r->easy, CURLOPT_TCP_KEEPIDLE, a->keepalive_idle);
+        curl_easy_setopt(r->easy, CURLOPT_TCP_KEEPINTVL,
                                   a->keepalive_interval);
-        if (!conn_add_header(c, "Connection: Keep-Alive") &&
-            !conn_add_header_keepaive(c, a))
+        if (!request_add_header(c, "requestection: Keep-Alive") &&
+            !request_add_header_keepaive(c, a))
         {
-            ++c->curl_ctx->stat.failed_requests;
+            ++r->curl_ctx->stat.failed_requests;
             return CURLM_OUT_OF_MEMORY;
         }
     } else {
-        if (!conn_add_header(c, "Connection: close")) {
-            ++c->curl_ctx->stat.failed_requests;
+        if (!request_add_header(c, "requestection: close")) {
+            ++r->curl_ctx->stat.failed_requests;
             return CURLM_OUT_OF_MEMORY;
         }
     }
@@ -489,80 +431,76 @@ conn_start(conn_t *c, const conn_start_args_t *a)
 #endif
 
     if (a->read_timeout > 0)
-        curl_easy_setopt(c->easy, CURLOPT_TIMEOUT, a->read_timeout);
+        curl_easy_setopt(r->easy, CURLOPT_TIMEOUT, a->read_timeout);
 
     if (a->connect_timeout > 0)
-        curl_easy_setopt(c->easy, CURLOPT_CONNECTTIMEOUT, a->connect_timeout);
+        curl_easy_setopt(r->easy, CURLOPT_CONNECTTIMEOUT, a->connect_timeout);
 
     if (a->dns_cache_timeout > 0)
-        curl_easy_setopt(c->easy, CURLOPT_DNS_CACHE_TIMEOUT,
+        curl_easy_setopt(r->easy, CURLOPT_DNS_CACHE_TIMEOUT,
                          a->dns_cache_timeout);
 
     if (a->curl_verbose)
-        curl_easy_setopt(c->easy, CURLOPT_VERBOSE, 1L);
+        curl_easy_setopt(r->easy, CURLOPT_VERBOSE, 1L);
 
-    curl_easy_setopt(c->easy, CURLOPT_PRIVATE, (void *) c);
+    curl_easy_setopt(r->easy, CURLOPT_PRIVATE, (void *) c);
 
-    curl_easy_setopt(c->easy, CURLOPT_READFUNCTION, read_cb);
-    curl_easy_setopt(c->easy, CURLOPT_READDATA, (void *) c);
+    curl_easy_setopt(r->easy, CURLOPT_READFUNCTION, read_cb);
+    curl_easy_setopt(r->easy, CURLOPT_READDATA, (void *) c);
 
-    curl_easy_setopt(c->easy, CURLOPT_WRITEFUNCTION, write_cb);
-    curl_easy_setopt(c->easy, CURLOPT_WRITEDATA, (void *) c);
+    curl_easy_setopt(r->easy, CURLOPT_WRITEFUNCTION, write_cb);
+    curl_easy_setopt(r->easy, CURLOPT_WRITEDATA, (void *) c);
 
-    curl_easy_setopt(c->easy, CURLOPT_ERRORBUFFER, c->error);
+    curl_easy_setopt(r->easy, CURLOPT_NOPROGRESS, 1L);
 
-    curl_easy_setopt(c->easy, CURLOPT_NOPROGRESS, 1L);
-
-    curl_easy_setopt(c->easy, CURLOPT_HTTP_VERSION, CURL_HTTP_VERSION_1_1);
+    curl_easy_setopt(r->easy, CURLOPT_HTTP_VERSION, CURL_HTTP_VERSION_1_1);
 
     if (a->low_speed_time > 0)
-        curl_easy_setopt(c->easy, CURLOPT_LOW_SPEED_TIME, a->low_speed_time);
+        curl_easy_setopt(r->easy, CURLOPT_LOW_SPEED_TIME, a->low_speed_time);
 
     if (a->low_speed_limit > 0)
-        curl_easy_setopt(c->easy, CURLOPT_LOW_SPEED_LIMIT, a->low_speed_limit);
+        curl_easy_setopt(r->easy, CURLOPT_LOW_SPEED_LIMIT, a->low_speed_limit);
 
     /* Headers have to seted right before add_handle() */
-    if (c->headers != NULL)
-        curl_easy_setopt(c->easy, CURLOPT_HTTPHEADER, c->headers);
+    if (r->headers != NULL)
+        curl_easy_setopt(r->easy, CURLOPT_HTTPHEADER, r->headers);
 
-    ++c->curl_ctx->stat.total_requests;
+    ++r->curl_ctx->stat.total_requests;
 
-    CURLMcode rc = curl_multi_add_handle(c->curl_ctx->multi, c->easy);
+    CURLMcode rc = curl_multi_add_handle(r->curl_ctx->multi, r->easy);
     if (!is_mcode_good(rc)) {
-        ++c->curl_ctx->stat.failed_requests;
+        ++r->curl_ctx->stat.failed_requests;
         return rc;
     }
-
-    ++c->curl_ctx->stat.active_requests;
 
     return rc;
 }
 
 
 #if defined (MY_DEBUG)
-conn_t*
-new_conn_test(curl_ctx_t *l, const char *url)
+request_t*
+new_request_test(curl_ctx_t *l, const char *url)
 {
-    conn_t *c = new_conn(l);
+    request_t *r = new_request(l);
     if (c == NULL)
         return NULL;
 
-    curl_easy_setopt(c->easy, CURLOPT_URL, url);
+    curl_easy_setopt(r->easy, CURLOPT_URL, url);
 
-    conn_start_args_t a;
-    conn_start_args_init(&a);
+    request_start_args_t a;
+    request_start_args_init(&a);
 
     a.keepalive_interval = 60;
     a.keepalive_idle = 120;
     a.read_timeout = 2;
 
-    if (conn_start(c, &a) != CURLM_OK)
+    if (request_start(r, &a) != CURLM_OK)
         goto error_exit;
 
-    return c;
+    return r;
 
 error_exit:
-    free_conn(c);
+    free_request(l, r);
     return NULL;
 }
 #endif /* MY_DEBUG */
@@ -578,6 +516,9 @@ curl_ctx_new(const curl_args_t *a)
         return NULL;
 
     memset(l, 0, sizeof(curl_ctx_t));
+
+    if (!request_pool_new(&l->cpool, l, a->pool_size))
+        goto error_exit;
 
     l->loop = ev_loop_new(0);
     if (l->loop == NULL)
@@ -621,6 +562,8 @@ curl_destroy(curl_ctx_t *l)
 
     if (l->loop)
         ev_loop_destroy(l->loop);
+
+    request_pool_free(&l->cpool);
 
     free(l);
 }
@@ -669,7 +612,7 @@ curl_print_stat(curl_ctx_t *l, FILE* out)
 
 
 void
-conn_start_args_print(const conn_start_args_t *a, FILE *out)
+request_start_args_print(const request_start_args_t *a, FILE *out)
 {
   fprintf(out, "max_conns = %d, keepalive_idle = %d, keepalive_interval = %d, "
                "low_speed_time = %d, low_speed_limit = %d, curl_verbose = %d"

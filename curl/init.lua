@@ -45,16 +45,24 @@ local curl_mt
 --  Returns:
 --     curl object or raise error()
 --
-local http = function(pipeline, max_conns)
-  curl = curl_driver.new(pipeline or 0, max_conns or 5)
-  local ok, version = curl:version()
-  if not ok then
-    error("can't get curl:version()")
-  end
+local http = function(opts)
 
-  return setmetatable({VERSION     = version,
-                       curl        = curl, },
-                       curl_mt )
+    opts = opts or {}
+
+    opts.pipeline = opts.pipeline or 0
+    opts.max_conns = opts.max_conns or 5
+    opts.pool_size = opts.pool_size or 1000
+
+    curl = curl_driver.new(opts.pipeline, opts.max_conns, opts.pool_size)
+
+    local ok, version = curl:version()
+    if not ok then
+        error("can't get curl:version()")
+    end
+
+    return setmetatable({VERSION     = version,
+                         curl        = curl, },
+                         curl_mt )
 end
 
 

@@ -53,6 +53,9 @@ for i = 1, num do
                              connect_timeout = obj.connect_timeout,
                              read_timeout = obj.read_timeout,
                              dns_cache_timeout = obj.dns_cache_timeout, })
+
+              fiber.sleep(0.001)
+
               obj.http:get(obj.url,
                             {headers = obj.headers,
                              keepalive_idle = 30,
