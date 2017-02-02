@@ -326,6 +326,10 @@ curl_mt = {
         return self.curl:stat()
     end,
 
+    pool_stat = function(self)
+        return self.curl:pool_stat()
+    end,
+
     --
     -- <free> - cleanup resources
     --
