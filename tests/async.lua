@@ -18,7 +18,7 @@ local os    = require('os')
 local headers   = { my_header = "1", my_header2 = "2" }
 local my_body   = { key="value" }
 
-local http = curl.http()
+local http = curl.http({pool_size = 2})
 
 print(http.VERSION)
 
@@ -101,6 +101,9 @@ local st = http:stat()
 assert(st.sockets_added == st.sockets_deleted)
 assert(st.active_requests == 0)
 assert(st.loop_calls > 0)
+local pst = http:pool_stat()
+assert(pst.pool_size == 2)
+assert(pst.free == pst.pool_size)
 
 http:free()
 

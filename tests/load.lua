@@ -90,6 +90,10 @@ fiber.create(function()
         assert(st.sockets_added == st.sockets_deleted)
         assert(st.active_requests == 0)
         assert(st.loop_calls > 0)
+
+        local pst = obj.http:pool_stat()
+        assert(pst.pool_size == pst.free)
+
         obj.http:free()
         rest = rest - 1
         curls[i].http = nil

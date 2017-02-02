@@ -328,6 +328,27 @@ get_stat(lua_State *L)
 }
 
 
+static
+int
+pool_stat(lua_State *L)
+{
+    lib_ctx_t *ctx = ctx_get(L);
+    if (ctx == NULL)
+        return luaL_error(L, "can't get lib ctx");
+
+    curl_ctx_t *l = ctx->curl_ctx;
+    if (l == NULL)
+        return luaL_error(L, "it doesn't initialized");
+
+    lua_newtable(L);
+
+    add_field_u64(L, "pool_size", (uint64_t) l->cpool.size);
+    add_field_u64(L, "free", (uint64_t) request_pool_get_free_size(&l->cpool));
+
+    return 1;
+}
+
+
 /** Lib functions {{{
  */
 static
@@ -452,6 +473,7 @@ static const struct luaL_Reg R[] = {
 static const struct luaL_Reg M[] = {
     {"async_request", async_request},
     {"stat",          get_stat},
+    {"pool_stat",     pool_stat},
     {"free",          cleanup /* free already exists */},
     {NULL,            NULL}
 };

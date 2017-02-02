@@ -177,3 +177,20 @@ request_pool_free_request(request_pool_t *p, request_t *r)
 
     reset_request(r);
 }
+
+
+size_t
+request_pool_get_free_size(request_pool_t *p)
+{
+    size_t size = 0;
+
+    if (p == NULL)
+        return size;
+
+    for (size_t i = 0; i < p->size; ++i) {
+        if (!p->mem[i].pool.busy)
+            ++size;
+    }
+
+    return size;
+}

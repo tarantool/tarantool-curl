@@ -82,5 +82,6 @@ void request_pool_free(request_pool_t *p);
 
 request_t* request_pool_get_request(request_pool_t *p);
 void request_pool_free_request(request_pool_t *p, request_t *c);
+size_t request_pool_get_free_size(request_pool_t *p);
 
 #endif /* REQUEST_POOL_H_INCLUDED */
