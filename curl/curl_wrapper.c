@@ -411,14 +411,14 @@ request_start(request_t *r, const request_start_args_t *a)
         curl_easy_setopt(r->easy, CURLOPT_TCP_KEEPIDLE, a->keepalive_idle);
         curl_easy_setopt(r->easy, CURLOPT_TCP_KEEPINTVL,
                                   a->keepalive_interval);
-        if (!request_add_header(c, "requestection: Keep-Alive") &&
-            !request_add_header_keepaive(c, a))
+        if (!request_add_header(r, "requestection: Keep-Alive") &&
+            !request_add_header_keepaive(r, a))
         {
             ++r->curl_ctx->stat.failed_requests;
             return CURLM_OUT_OF_MEMORY;
         }
     } else {
-        if (!request_add_header(c, "requestection: close")) {
+        if (!request_add_header(r, "requestection: close")) {
             ++r->curl_ctx->stat.failed_requests;
             return CURLM_OUT_OF_MEMORY;
         }
@@ -443,13 +443,13 @@ request_start(request_t *r, const request_start_args_t *a)
     if (a->curl_verbose)
         curl_easy_setopt(r->easy, CURLOPT_VERBOSE, 1L);
 
-    curl_easy_setopt(r->easy, CURLOPT_PRIVATE, (void *) c);
+    curl_easy_setopt(r->easy, CURLOPT_PRIVATE, (void *) r);
 
     curl_easy_setopt(r->easy, CURLOPT_READFUNCTION, read_cb);
-    curl_easy_setopt(r->easy, CURLOPT_READDATA, (void *) c);
+    curl_easy_setopt(r->easy, CURLOPT_READDATA, (void *) r);
 
     curl_easy_setopt(r->easy, CURLOPT_WRITEFUNCTION, write_cb);
-    curl_easy_setopt(r->easy, CURLOPT_WRITEDATA, (void *) c);
+    curl_easy_setopt(r->easy, CURLOPT_WRITEDATA, (void *) r);
 
     curl_easy_setopt(r->easy, CURLOPT_NOPROGRESS, 1L);
 
