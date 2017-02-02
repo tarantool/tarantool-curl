@@ -393,7 +393,7 @@ write_cb(void *ptr, size_t size, size_t nmemb, void *ctx)
 CURLMcode
 request_start(request_t *r, const request_start_args_t *a)
 {
-    assert(c);
+    assert(r);
     assert(a);
     assert(r->easy);
     assert(r->curl_ctx);
