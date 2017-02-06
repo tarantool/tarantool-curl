@@ -24,7 +24,7 @@ local my_body   = { key="value" }
 local json_body = json.encode(my_body)
 
 -- Sync request
-ocal r = http:get('https://tarantool.org/this/page/not/exists',
+local r = http:get('https://tarantool.org/this/page/not/exists',
                    {headers=headers} )
 assert(r.code == 404)
 assert(r.body:len() ~= 0)
