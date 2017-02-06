@@ -65,14 +65,14 @@ reset_request(request_t *r)
 
     r->pool.busy = false;
 
-    if (r->easy) {
-        curl_easy_cleanup(r->easy);
-        r->easy = NULL;
-    }
-
     if (r->headers) {
         curl_slist_free_all(r->headers);
         r->headers = NULL;
+    }
+
+    if (r->easy) {
+        curl_easy_cleanup(r->easy);
+        r->easy = NULL;
     }
 
     if (r->lua_ctx.L) {
@@ -129,8 +129,8 @@ request_pool_free(request_pool_t *p)
     if (p->mem) {
         for (size_t i = 0; i < p->size; ++i)
             reset_request(&p->mem[i]);
-        p->mem = NULL;
         free(p->mem);
+        p->mem = NULL;
     }
 }
 
@@ -141,7 +141,7 @@ request_pool_get_request(request_pool_t *p)
     assert(p);
 
     if (p->mem == NULL)
-      return NULL;
+        return NULL;
 
     for (size_t i = 0; i < p->size; ++i) {
 
