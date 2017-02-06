@@ -42,28 +42,24 @@ for i = 1, num do
 
   local obj = curls[i]
 
-  for j = 1, 100 do
+  for j = 1, 10 do
       fiber.create(function()
-          pcall(
-            function()
-              obj.http:post(obj.url, obj.body,
+          obj.http:post(obj.url, obj.body,
                             {headers = obj.headers,
                              keepalive_idle = 30,
                              keepalive_interval = 60,
                              connect_timeout = obj.connect_timeout,
                              read_timeout = obj.read_timeout,
                              dns_cache_timeout = obj.dns_cache_timeout, })
-
-              fiber.sleep(0.001)
-
-              obj.http:get(obj.url,
+      end )
+      fiber.create(function()
+          obj.http:get(obj.url,
                             {headers = obj.headers,
                              keepalive_idle = 30,
                              keepalive_interval = 60,
                              connect_timeout = obj.connect_timeout,
                              read_timeout = obj.read_timeout,
                              dns_cache_timeout = obj.dns_cache_timeout, })
-            end)
       end )
   end
 end

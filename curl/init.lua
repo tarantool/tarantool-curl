@@ -83,7 +83,6 @@ local function done_cb(curl_code, http_code, error_message, ctx)
     ctx.http_code     = http_code
     ctx.curl_code     = curl_code
     ctx.error_message = error_message
-    fiber.wakeup(ctx.fiber)
 end
 
 --
@@ -125,7 +124,6 @@ local function sync_request(self, method, url, body, opts)
                  http_code     = 0,
                  curl_code     = 0,
                  error_message = '',
-                 fiber         = fiber.self(),
                  response      = '',
                  body          = body or '', }
 
@@ -159,11 +157,21 @@ local function sync_request(self, method, url, body, opts)
         error("curl has an internal error, msg = " .. emsg)
     end
 
-    if opts.read_timeout ~= nil then
-        fiber.sleep(opts.read_timeout)
-    else
-        fiber.sleep(60)
+    -- 'yield' until all data have arrived {{{
+    local max_ticks = opts.read_timeout or 60 * 100 -- 60 sec
+    local ticks = 0
+
+    while not ctx.done do
+
+        if ticks > max_ticks then
+          error("curl has an internal error, msg = read_timeout reached")
+        end
+
+        fiber.sleep(0.01)
+
+        ticks = ticks + 1
     end
+    -- }}}
 
     -- Curl has an internal error
     if ctx.curl_code ~= 0 then
@@ -171,7 +179,7 @@ local function sync_request(self, method, url, body, opts)
     end
 
     -- Curl did a request and he has a response
-    return {code = ctx.http_code, body = ctx.response}
+    return { code = ctx.http_code, body = ctx.response }
 end
 -- }}}
 

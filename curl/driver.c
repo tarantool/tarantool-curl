@@ -44,7 +44,7 @@ curl_ev_f(va_list ap)
         if (ctx->done)
             break;
         curl_poll_one(ctx->curl_ctx);
-        fiber_sleep(0.001);
+        fiber_sleep(0.01);
     }
 
     return 0;
