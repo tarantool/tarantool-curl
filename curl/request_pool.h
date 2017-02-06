@@ -29,57 +29,59 @@
  * SUCH DAMAGE.
  */
 
-#ifndef DRIVER_H_INCLUDED
-#define DRIVER_H_INCLUDED 1
+#ifndef REQUEST_POOL_H_INCLUDED
+#define REQUEST_POOL_H_INCLUDED 1
 
-#include "curl_wrapper.h"
-#include "utils.h"
+#include <stdlib.h>
+#include <stdbool.h>
+#include <inttypes.h>
 
-/**
- * Unique name for userdata metatables
- */
-#define DRIVER_LUA_UDATA_NAME	"__tnt_curl"
-#define WORK_TIMEOUT 0.3
-#define TNT_CURL_VERSION_MAJOR 2
-#define TNT_CURL_VERSION_MINOR 2
-#define TNT_CURL_VERSION_PATCH 5
+#include <lua.h>
+#include <lualib.h>
+#include <lauxlib.h>
 
-typedef struct  {
-    curl_ctx_t   *curl_ctx;
-    struct fiber *fiber;
-    bool         done;
-} lib_ctx_t;
+#include <curl/curl.h>
+
+struct curl_ctx_s;
+
+typedef struct {
+
+  /* pool meta info */
+  struct {
+    size_t idx;
+    bool   busy;
+  } pool;
+
+  /** Information associated with a specific easy handle */
+  CURL       *easy;
+
+  /* Reference to curl context */
+  struct curl_ctx_s *curl_ctx;
+
+  /* Callbacks from lua and Lua context */
+  struct {
+    lua_State *L;
+    int       read_fn;
+    int       write_fn;
+    int       done_fn;
+    int       fn_ctx;
+  } lua_ctx;
+
+  /* HTTP headers */
+  struct curl_slist *headers;
+} request_t;
+
+typedef struct {
+  request_t  *mem;
+  size_t     size;
+} request_pool_t;
 
 
-static inline
-lib_ctx_t*
-ctx_get(lua_State *L)
-{
-  return (lib_ctx_t *)
-      luaL_checkudata(L, 1, DRIVER_LUA_UDATA_NAME);
-}
+bool request_pool_new(request_pool_t *p, struct curl_ctx_s *c, size_t s);
+void request_pool_free(request_pool_t *p);
 
-static inline
-int
-curl_make_result(lua_State *L, CURLcode code, CURLMcode mcode)
-{
-  const char *emsg = NULL;
-  if (code != CURL_LAST)
-    emsg = curl_easy_strerror(code);
-  else if (mcode != CURLM_LAST)
-    emsg = curl_multi_strerror(mcode);
-  return make_str_result(L,
-        code != CURLE_OK,
-        (emsg != NULL ? emsg : "ok"));
-}
+request_t* request_pool_get_request(request_pool_t *p);
+void request_pool_free_request(request_pool_t *p, request_t *c);
+size_t request_pool_get_free_size(request_pool_t *p);
 
-static inline
-void
-add_field_u64(lua_State *L, const char *key, uint64_t value)
-{
-    lua_pushstring(L, key);
-    lua_pushinteger(L, value);
-    lua_settable(L, -3);  /* 3rd element from the stack top */
-}
-
-#endif /* DRIVER_H_INCLUDED */
+#endif /* REQUEST_POOL_H_INCLUDED */

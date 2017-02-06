@@ -1,5 +1,5 @@
 Name: tarantool-curl
-Version: 1.0.1
+Version: 2.2.5
 Release: 1%{?dist}
 Summary: Curl based HTTP client for Tarantool
 Group: Applications/Databases
@@ -10,8 +10,10 @@ BuildRequires: cmake >= 2.8
 BuildRequires: gcc >= 4.5
 BuildRequires: libcurl-devel
 BuildRequires: tarantool-devel >= 1.6.8.0
+BuildRequires: libev, libev-devel
+BuildRequires: nodejs
 BuildRequires: /usr/bin/prove
-Requires: tarantool >= 1.6.8.0
+Requires: tarantool >= 1.6.8.0, libev
 
 %description
 This package provides a Curl based HTTP client for Tarantool.
@@ -22,6 +24,7 @@ This package provides a Curl based HTTP client for Tarantool.
 %build
 %cmake . -DCMAKE_BUILD_TYPE=RelWithDebInfo
 make %{?_smp_mflags}
+make %{?_smp_mflags} test
 
 %install
 %make_install
@@ -34,5 +37,9 @@ make %{?_smp_mflags}
 %license LICENSE AUTHORS
 
 %changelog
+* Mon Jan 30 2017 V. Soshnikov <dedok.mad@gmail.com> 2.2.3-1
+- libev support
+- imported many curl's options, see https://github.com/tarantool/curl/#api-reference
+
 * Wed Aug 31 2016 Andrey Drozdov <andrey@tarantool.org> 1.0.0-1
 - Initial version of the RPM spec
