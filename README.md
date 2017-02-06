@@ -85,12 +85,17 @@ successfully executed an instruction that brought data from the Internet.
 
 ## API reference
 
-The `curl` package contains one component, `http()`, which contains following 
-functions:
+The `curl` package contains one component, `http()`, which has three options: 
+
+    * `max_conn` - number (default 10000) 
+    * `pipeline` - 0 or 1 (default 0)
+    * `pool_size`- number (default 5)
+    
+    This component contains following functions:
 
 * `VERSION` -- a version as string
 
-* `request(method, url [, options])` -- Asynchronous data transfer 
+* `request(method, url [, options])` -- Synchronous data transfer 
   request. See details below.
 
 * `get(url [, options])` -- This is the same as `request('GET', 
@@ -134,8 +139,8 @@ functions:
     http_other_responses -- this is a total number of requests which have requests not a HTTP 200
 
     failed_requests -- this is a total number of requests which have
-                    -- failed (included systeme erros, curl errors, HTTP
-                    -- erros and so on)
+                    -- failed (included system erros, curl errors, and so on 
+                    -- but not HTTP errors)
   }
 ```
 
