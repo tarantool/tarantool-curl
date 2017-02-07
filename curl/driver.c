@@ -265,21 +265,37 @@ async_request(lua_State *L)
 
     /* Method {{{ */
 
-    if (*method == 'G') {
-      curl_easy_setopt(r->easy, CURLOPT_HTTPGET, 1);
+    if (strncmp(method, "GET", 3) == 0) {
+        curl_easy_setopt(r->easy, CURLOPT_HTTPGET, 1L);
     }
-    else if (strcmp(method, "POST") == 0) {
+    else if (strncmp(method, "HEAD", 4) == 0){
+        curl_easy_setopt(r->easy, CURLOPT_NOBODY, 1L);
+    }
+    else if (strncmp(method, "POST", 4) == 0) {
         if (!request_set_post(r)) {
             reason = "can't allocate memory (request_set_post)";
             goto error_exit;
         }
     }
-   else if (strcmp(method, "PUT") == 0) {
+    else if (strncmp(method, "PUT", 3) == 0) {
         if (!request_set_put(r)) {
             reason = "can't allocate memory (request_set_put)";
             goto error_exit;
         }
-    } else {
+    }
+    else if (strncmp(method, "OPTIONS", 7) == 0){
+         curl_easy_setopt(r->easy, CURLOPT_CUSTOMREQUEST, "OPTIONS");  
+    }
+    else if (strncmp(method, "DELETE", 6) == 0){
+         curl_easy_setopt(r->easy, CURLOPT_CUSTOMREQUEST, "DELETE");  
+    }
+    else if (strncmp(method, "TRACE", 5) == 0){
+         curl_easy_setopt(r->easy, CURLOPT_CUSTOMREQUEST, "TRACE");  
+    }
+    else if (strncmp(method, "CONNECT", 6) == 0){
+         curl_easy_setopt(r->easy, CURLOPT_CUSTOMREQUEST, "CONNECT");  
+    }
+    else {
         reason = "method does not supported";
         goto error_exit;
     }

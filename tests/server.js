@@ -1,4 +1,4 @@
-#!/usr/bin/env node
+#!/usr/bin/env nodejs
 /*
  * Copyright (C) 2016 - 2017 Tarantool AUTHORS: please see AUTHORS file.
  *
@@ -29,14 +29,31 @@
  * THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
  * SUCH DAMAGE.
  */
-
-var http = require('http');
-
+http = require('http')
 http.createServer(function (req, res) {
     setTimeout(function () {
         res.writeHead(200, {'Content-Type': 'text/plain'});
         res.end("Hello World");
     }, 1 )
-}).on('connection', function (socket) {
+    }).on('request', function(request, response){
+        if (request.method == "TRACE"){
+            response.writeHead(200, {'Content-Type': 'text/plain'});
+            response.end("Hello World!!!Trace!!!");
+        }
+    }
+    ).on('connection', function (socket) {
     socket.setTimeout(10000*2);
-}).listen(10000);
+    }).on('connect', (req, cltSocket, head) => {
+            url = require('url')
+            net = require('net')
+          //var srvUrl = url.parse(`http://${req.url}`);
+          var srvSocket = net.connect(10000, "127.0.0.1", () => {
+          cltSocket.write('HTTP/1.1 200 Connection Established\r\n' +
+                                              'Proxy-agent: Node.js-Proxy\r\n' +
+                                                                  '\r\n');
+                      srvSocket.write(head);
+                      srvSocket.end()
+                      cltSocket.end()    
+                      });
+    }
+    ).listen(10000);

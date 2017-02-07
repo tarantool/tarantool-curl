@@ -218,6 +218,38 @@ curl_mt = {
     end,
 
     --
+    -- <http_options> see <sync_request>
+    --
+    http_options = function(self, url, options)
+        return self:request('OPTIONS', url, '', options)
+    end,
+
+    --
+    -- <head> see <sync_request>
+    --
+    head = function(self, url, options)
+        return self:request('HEAD', url, '', options)
+    end,
+    --
+    -- <delete> see <sync_request>
+    --
+    delete = function(self, url, options)
+        return self:request('DELETE', url, '', options)
+    end,
+
+    --
+    -- <trace> see <sync_request>
+    --
+    trace = function(self, url, options)
+        return self:request('TRACE', url, '', options)
+    end,
+
+    --
+    -- <http_connect> see <sync_request>
+    --
+    http_connect = function(self, url, options)
+        return self:request('CONNECT', url, '', options)
+    end,
     --  <async_request> This function does HTTP request
     --
     --  Parameters:
@@ -300,6 +332,40 @@ curl_mt = {
     --
     async_put = function(self, url, options)
         return self:async_request('PUT', url, options)
+    end,
+
+    --
+    -- <async_http_options> see <async_request>
+    --
+    async_http_options = function(self, url, options)
+        return self:async_request('OPTIONS', url, options)
+    end,
+
+    --
+    -- <async_head> see <async_request>
+    --
+    async_head = function(self, url, options)
+        return self:async_request('HEAD', url, options)
+    end,
+    --
+    -- <async_delete> see <async_request>
+    --
+    async_delete = function(self, url, options)
+        return self:request('DELETE', url, options)
+    end,
+
+    --
+    -- <async_trace> see <async_request>
+    --
+    async_trace = function(self, url, options)
+        return self:async_request('TRACE', url, options)
+    end,
+
+    --
+    -- <async_http_connect> see <async_request>
+    --
+    async_http_connect = function(self, url, options)
+        return self:async_request('CONNECT', url, options)
     end,
 
     --
