@@ -1,5 +1,5 @@
 Name: tarantool-curl
-Version: 2.2.5
+Version: 2.2.6
 Release: 1%{?dist}
 Summary: Curl based HTTP client for Tarantool
 Group: Applications/Databases
