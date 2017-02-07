@@ -68,12 +68,12 @@ function invalid_response_get(value)
     return true, _
 end
 
---for key, value in pairs(sync_funcs)
---    do
---       run(key .. " valid request", valid_response_get, value)
---       run(key .. " invalid request", invalid_response_get, value)
---    end
---
+for key, value in pairs(sync_funcs)
+    do
+       run(key .. " valid request", valid_response_get, value)
+       run(key .. " invalid request", invalid_response_get, value)
+    end
+
 --}}
 
 --{{
@@ -153,13 +153,13 @@ function async_get(value)
     return ctx.ok, ctx.msg
 end
 
---for key, value in pairs(async_funcs)
---    do
---        local tmp = value
---        tmp.good = true
---        run(key ..  " valid request", async_get, tmp)
---        run(key ..  " invalid request", async_get, value)
---    end
+for key, value in pairs(async_funcs)
+    do
+        local tmp = value
+        tmp.good = true
+        run(key ..  " valid request", async_get, tmp)
+        run(key ..  " invalid request", async_get, value)
+    end
 --}}
 
 --{{
@@ -285,10 +285,10 @@ function post_test(value)
     return true
 end
 
---for key, value in pairs(post_requests)
---    do
---        run("post/put test " .. key, post_test, value)
---    end
+for key, value in pairs(post_requests)
+    do
+        run("post/put test " .. key, post_test, value)
+    end
 
 --
 --}}

@@ -141,7 +141,7 @@ async_request(lua_State *L)
         else
             lua_pop(L, 1);
 
-       /* Write callback */
+        /* Write callback */
         lua_pushstring(L, "write");
         lua_gettable(L, 4);
         if (lua_isfunction(L, top + 1))
