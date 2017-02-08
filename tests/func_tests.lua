@@ -228,7 +228,7 @@ post_requests["async_request with POST"] = {
 }
 
 
-value_header = "json/application"
+value_header = "application/json"
 headers = {["Content-Type"]= value_header}
 function post_test(value)
     if value.async then
