@@ -91,7 +91,7 @@ The `curl` package contains one component, `http()`, which has three options:
     * `pipeline` - 0 or 1 (default 0)
     * `pool_size`- number (default 5)
     
-    This component contains following functions:
+This component contains following functions:
 
 * `VERSION` -- a version as string
 
@@ -139,7 +139,7 @@ The `curl` package contains one component, `http()`, which has three options:
     http_other_responses -- this is a total number of requests which have requests not a HTTP 200
 
     failed_requests -- this is a total number of requests which have
-                    -- failed (included system erros, curl errors, and so on 
+                    -- failed (included system erros, curl errors, 
                     -- but not HTTP errors)
   }
 ```
