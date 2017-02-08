@@ -1,6 +1,6 @@
 -- {{
 -- Util functions
-function print_err(ok, msg, desc, crash)
+function print_err(ok, msg, desc, crash, verbose)
     if not ok then
         print('[-] ' .. desc)
         error(msg)
@@ -8,15 +8,17 @@ function print_err(ok, msg, desc, crash)
             os.exit(1) 
         end
     else
-        print('[+]' .. desc)
+        if verbose then
+            print('[+]' .. desc)
+        end
     end
 end
 
 
 function run(desc, func, param)
-  print('Running', desc)
+  -- print('Running', desc)
   ok, err = func(param)  
-  print_err(ok, err, desc, true)
+  print_err(ok, err, desc, true, false)
 end
 --
 --}}
@@ -318,15 +320,15 @@ check_stats(new_stat, new_pstat)
 if old_stat.failed_requests ~= new_stat.failed_requests then
     print("old stats: \n" .. json.encode(old_stat))
     print("new stats: \n" .. json.encode(new_stat))
-    print_err(false, "stats failed_requests wrong", "sync correct request", true)
+    print_err(false, "stats failed_requests wrong", "sync correct request", true, false)
 end
 
 if old_stat.total_requests ~= new_stat.total_requests - 1 then 
-    print_err(false, "stats total_requests wrong", "sync correct request", true)
+    print_err(false, "stats total_requests wrong", "sync correct request", true, false)
 end
 
 if old_stat.http_200_responses ~= new_stat.http_200_responses - 1 then 
-    print_err(false, "stats 200_responses wrong", "sync correct request", true)
+    print_err(false, "stats 200_responses wrong", "sync correct request", true, false)
 end
 
 old_stat = http:stat()
@@ -340,19 +342,19 @@ check_stats(new_stat, new_pstat)
 if old_stat.failed_requests ~= new_stat.failed_requests then
     print("old stats: \n" .. json.encode(old_stat))
     print("new stats: \n" .. json.encode(new_stat))
-    print_err(false, "stats failed_requests wrong", "sync bad request", true)
+    print_err(false, "stats failed_requests wrong", "sync bad request", true, false)
 end
 
 if old_stat.total_requests ~= new_stat.total_requests - 1 then 
-    print_err(false, "stats total_requests wrong", "async bad request", true)
+    print_err(false, "stats total_requests wrong", "async bad request", true, false)
 end
 
 if old_stat.http_200_responses ~= new_stat.http_200_responses then 
-    print_err(false, "stats 200_responses wrong", "async bad request", true)
+    print_err(false, "stats 200_responses wrong", "async bad request", true, false)
 end
 
-print("[+] stats")
-
+print("[+] func_tests")
+os.exit(0)
 --
 --}}
 --

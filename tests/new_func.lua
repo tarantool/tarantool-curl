@@ -27,8 +27,9 @@ end
 
 
 connect = http:http_connect(url)
-if data.code ~= 200 then 
+if connect.code ~= 200 then 
     error("connect: wrong code")
 end
 
-print("[+] Ok")
+print("[+]new_func Ok")
+os.exit(0)
