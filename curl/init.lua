@@ -53,7 +53,7 @@ local http = function(opts)
     opts.max_conns = opts.max_conns or 5
     opts.pool_size = opts.pool_size or 1000
 
-    curl = curl_driver.new(opts.pipeline, opts.max_conns, opts.pool_size)
+    local curl = curl_driver.new(opts.pipeline, opts.max_conns, opts.pool_size)
 
     local ok, version = curl:version()
     if not ok then
