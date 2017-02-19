@@ -34,9 +34,17 @@ tools including `cmake`, a C suppors gnu99 compiler, `git` and Lua.
 You will need the `curl` and `libev` developer packages. To download and install it, say
 (example for Ubuntu):
 ```
+sudo apt-get install cmake
 sudo apt-get install libev libev-dev
 sudo apt-get install curl
 sudo apt-get install libcurl4-openssl-dev
+```
+(example Mac OS)
+```
+brew install cmake
+brew install libev
+brew install curl
+brew install tarantool
 ```
 
 The `curl` package itself is on
