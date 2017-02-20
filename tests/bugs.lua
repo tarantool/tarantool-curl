@@ -36,6 +36,20 @@ run(false, 'Issus https://github.com/tarantool/curl/issues/3', function()
   return true
 end)
 
+run(false, 'Issus https://github.com/tarantool/curl/issues/16', function()
+  local curl = require('curl')
+  local http = curl.http()
+  local res = http:get('http://httpbin.org/get', {read_timeout = 1})
+  assert(res.code == 200)
+
+  local ok, msg = pcall(function()
+    http:get('http://httpbin.org/get', {read_timeout = 0})
+  end)
+  assert(ok == false)
+  http:free()
+  return true
+end)
+
 print('[+] bugs OK')
 
 os.exit(0)

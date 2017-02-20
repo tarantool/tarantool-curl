@@ -158,13 +158,14 @@ local function sync_request(self, method, url, body, opts)
     end
 
     -- 'yield' until all data have arrived {{{
-    local max_ticks = opts.read_timeout or 60 * 100 -- 60 sec
     local ticks = 0
+    local max_ticks = opts.read_timeout or 60
+    max_ticks = max_ticks * 100 -- sec
 
     while not ctx.done do
 
         if ticks > max_ticks then
-          error("curl has an internal error, msg = read_timeout reached")
+            error("curl has an internal error, msg = read_timeout reached")
         end
 
         fiber.sleep(0.01)
