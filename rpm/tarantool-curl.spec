@@ -9,7 +9,7 @@ Source0: https://github.com/tarantool/%{name}/archive/%{version}/%{name}-%{versi
 BuildRequires: cmake >= 2.8
 BuildRequires: gcc >= 4.5
 BuildRequires: libcurl-devel
-BuildRequires: tarantool-devel >= 1.6.8.0
+BuildRequires: tarantool-devel >= 1.7.2.0
 BuildRequires: libev, libev-devel
 BuildRequires: nodejs, libuv
 BuildRequires: /usr/bin/prove

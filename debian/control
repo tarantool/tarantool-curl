@@ -4,7 +4,7 @@ Section: database
 Maintainer: Andrey Drozdov <andrey@tarantool.org>
 Build-Depends: debhelper (>= 9), cdbs,
                cmake (>= 2.8),
-               tarantool-dev (>= 1.6.8.0),
+               tarantool-dev (>= 1.7.2.0),
                libcurl4-openssl-dev,
                libev-dev,
                nodejs
