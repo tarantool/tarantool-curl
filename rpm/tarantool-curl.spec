@@ -8,12 +8,13 @@ URL: https://github.com/tarantool/tarantool-curl
 Source0: https://github.com/tarantool/%{name}/archive/%{version}/%{name}-%{version}.tar.gz
 BuildRequires: cmake >= 2.8
 BuildRequires: gcc >= 4.5
-BuildRequires: libcurl-devel
+BuildRequires: tarantool >= 1.7.2.0
 BuildRequires: tarantool-devel
+BuildRequires: libcurl-devel
 BuildRequires: libev, libev-devel
 BuildRequires: nodejs, libuv
 BuildRequires: /usr/bin/prove
-BuildRequires: tarantool >= 1.7.2
+
 Requires: tarantool >= 1.7.2, libev
 
 %description
