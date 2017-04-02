@@ -1,3 +1,8 @@
+tarantool-curl (2.2.9-1) stable; urgency=medium
+
+  * Build issues have been fixed
+
+ -- Vasiliy Soshnikov <dedok.mad@gmail.com>  Sun, 2 Apr 2017 22:01:00 +0300
 tarantool-curl (2.2.3-1) stable; urgency=medium
 
   * libev support
