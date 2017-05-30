@@ -319,9 +319,9 @@ sock_cb(CURL *e, curl_socket_t s, int what, void *cbp, void *sockp)
     dd("e = %p, s = %i, what = %s, cbp = %p, sockp = %p",
             e, s, whatstr[what], cbp, sockp);
 
-    if (what == CURL_POLL_REMOVE)
+    if (what == CURL_POLL_REMOVE) {
         remsock(fdp, l);
-    else {
+    } else {
         if (fdp == NULL) {
             if (!addsock(s, e, what, l))
                 return 1;
@@ -411,14 +411,14 @@ request_start(request_t *r, const request_start_args_t *a)
         curl_easy_setopt(r->easy, CURLOPT_TCP_KEEPIDLE, a->keepalive_idle);
         curl_easy_setopt(r->easy, CURLOPT_TCP_KEEPINTVL,
                                   a->keepalive_interval);
-        if (!request_add_header(r, "requestection: Keep-Alive") &&
+        if (!request_add_header(r, "Connection: Keep-Alive") &&
             !request_add_header_keepaive(r, a))
         {
             ++r->curl_ctx->stat.failed_requests;
             return CURLM_OUT_OF_MEMORY;
         }
     } else {
-        if (!request_add_header(r, "requestection: close")) {
+        if (!request_add_header(r, "Connection: close")) {
             ++r->curl_ctx->stat.failed_requests;
             return CURLM_OUT_OF_MEMORY;
         }
