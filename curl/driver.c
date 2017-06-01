@@ -31,6 +31,8 @@
 
 #include "driver.h"
 
+#include <math.h>
+
 
 static
 int
@@ -229,13 +231,13 @@ async_request(lua_State *L)
         lua_pushstring(L, "read_timeout");
         lua_gettable(L, 4);
         if (!lua_isnil(L, top + 1))
-            req_args.read_timeout = (long) lua_tointeger(L, top + 1);
+            req_args.read_timeout = (long) floor(lua_tonumber(L, top + 1) * 1000);
         lua_pop(L, 1);
 
         lua_pushstring(L, "connect_timeout");
         lua_gettable(L, 4);
         if (!lua_isnil(L, top + 1))
-            req_args.connect_timeout = (long) lua_tointeger(L, top + 1);
+            req_args.connect_timeout = (long) floor(lua_tonumber(L, top + 1) * 1000);
         lua_pop(L, 1);
 
         lua_pushstring(L, "dns_cache_timeout");
