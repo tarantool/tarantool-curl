@@ -1,3 +1,10 @@
+tarantool-curl (2.3.0-1) stable; urgency=medium
+
+  * Allow to pass floating-point values to 'connect_timeout' and 'read_timeout'
+  options
+
+ -- Vasiliy Soshnikov <dedok.mad@gmail.com>  Sun, 1 Jun 2017 22:01:00 +0300
+
 tarantool-curl (2.2.9-1) stable; urgency=medium
 
   * Build issues have been fixed
