@@ -41,8 +41,8 @@
 #define DRIVER_LUA_UDATA_NAME	"__tnt_curl"
 #define WORK_TIMEOUT 0.3
 #define TNT_CURL_VERSION_MAJOR 2
-#define TNT_CURL_VERSION_MINOR 2
-#define TNT_CURL_VERSION_PATCH 8
+#define TNT_CURL_VERSION_MINOR 3
+#define TNT_CURL_VERSION_PATCH 0
 
 typedef struct  {
     curl_ctx_t   *curl_ctx;
