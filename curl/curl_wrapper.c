@@ -431,10 +431,10 @@ request_start(request_t *r, const request_start_args_t *a)
 #endif
 
     if (a->read_timeout > 0)
-        curl_easy_setopt(r->easy, CURLOPT_TIMEOUT, a->read_timeout);
+        curl_easy_setopt(r->easy, CURLOPT_TIMEOUT_MS, a->read_timeout);
 
     if (a->connect_timeout > 0)
-        curl_easy_setopt(r->easy, CURLOPT_CONNECTTIMEOUT, a->connect_timeout);
+        curl_easy_setopt(r->easy, CURLOPT_CONNECTTIMEOUT_MS, a->connect_timeout);
 
     if (a->dns_cache_timeout > 0)
         curl_easy_setopt(r->easy, CURLOPT_DNS_CACHE_TIMEOUT,
