@@ -121,8 +121,10 @@ multi_timer_cb(CURLM *multi __attribute__((unused)),
                       (double) (timeout_ms / 1000), 0.);
         ev_timer_start(l->loop, &l->timer_event);
     }
-    else
-        timer_cb(l->loop, &l->timer_event, 0);
+    else if (timeout_ms == 0) {
+        ev_set_cb(&l->timer_event, timer_cb);
+	ev_feed_event(l->loop, &l->timer_event, 0);
+    }
 
     return 0;
 }
@@ -482,7 +484,7 @@ request_t*
 new_request_test(curl_ctx_t *l, const char *url)
 {
     request_t *r = new_request(l);
-    if (c == NULL)
+    if (r == NULL)
         return NULL;
 
     curl_easy_setopt(r->easy, CURLOPT_URL, url);
