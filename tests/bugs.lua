@@ -43,7 +43,7 @@ run(false, 'Issus https://github.com/tarantool/curl/issues/16', function()
   assert(res.code == 200)
 
   local ok, msg = pcall(function()
-    http:get('http://httpbin.org/get', {read_timeout = 0})
+    http:get('http://httpbin.org/get', {read_timeout = 0.001})
   end)
   assert(ok == false)
   http:free()
