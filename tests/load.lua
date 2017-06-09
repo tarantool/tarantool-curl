@@ -71,7 +71,7 @@ fiber.create(function()
   local yaml = require('yaml')
   local rest = num
 
-  ticks = 0
+  local ticks = 0
 
   while true do
 

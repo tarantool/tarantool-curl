@@ -79,10 +79,10 @@ local function write_cb(data, ctx)
 end
 
 local function done_cb(curl_code, http_code, error_message, ctx)
-    ctx.done          = true
     ctx.http_code     = http_code
     ctx.curl_code     = curl_code
     ctx.error_message = error_message
+    ctx.cond:signal()
 end
 
 --
@@ -120,7 +120,7 @@ local function sync_request(self, method, url, body, opts)
 
     opts = opts or {}
 
-    local ctx = {done          = false,
+    local ctx = {cond          = fiber.cond(),
                  http_code     = 0,
                  curl_code     = 0,
                  error_message = '',
@@ -158,20 +158,7 @@ local function sync_request(self, method, url, body, opts)
     end
 
     -- 'yield' until all data have arrived {{{
-    local ticks = 0
-    local max_ticks = opts.read_timeout or 60
-    max_ticks = max_ticks * 100 -- sec
-
-    while not ctx.done do
-
-        if ticks > max_ticks then
-            error("curl has an internal error, msg = read_timeout reached")
-        end
-
-        fiber.sleep(0.01)
-
-        ticks = ticks + 1
-    end
+    ctx.cond:wait()
     -- }}}
 
     -- Curl has an internal error
