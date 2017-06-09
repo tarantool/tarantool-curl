@@ -21,7 +21,7 @@ function run(is_skipping, desc, func)
   end
 end
 
-run(false, 'Issus https://github.com/tarantool/curl/issues/3', function()
+run(false, 'Issue https://github.com/tarantool/curl/issues/3', function()
   local curl = require('curl')
   local json = require('json')
   local http = curl.http()
@@ -36,7 +36,7 @@ run(false, 'Issus https://github.com/tarantool/curl/issues/3', function()
   return true
 end)
 
-run(false, 'Issus https://github.com/tarantool/curl/issues/16', function()
+run(false, 'Issue https://github.com/tarantool/curl/issues/16', function()
   local curl = require('curl')
   local http = curl.http()
   local res = http:get('http://httpbin.org/get', {read_timeout = 1})
@@ -47,6 +47,19 @@ run(false, 'Issus https://github.com/tarantool/curl/issues/16', function()
   end)
   assert(ok == false)
   http:free()
+  return true
+end)
+
+run(false, 'Issue timeout', function()
+  local curl = require('curl')
+  local http = curl.http()
+  local res = http:get('http://httpbin.org/get', {read_timeout = 0.5})
+  assert(res.code == 200)
+
+  local curl = require('curl')
+  local http = curl.http()
+  local res = http:get('http://httpbin.org/get', {read_timeout = 1})
+  assert(res.code == 200)
   return true
 end)
 
