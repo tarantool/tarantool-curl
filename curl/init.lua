@@ -68,8 +68,8 @@ end
 
 -- Internal {{{
 local function read_cb(cnt, ctx)
-    local res = ctx.body:sub(1, cnt)
-    ctx.body = ctx.body:sub(cnt + 1)
+    local res = ctx.body:sub(ctx.off, ctx.off + cnt - 1)
+    ctx.off = ctx.off + res:len()
     return res
 end
 
@@ -125,7 +125,8 @@ local function sync_request(self, method, url, body, opts)
                  curl_code     = 0,
                  error_message = '',
                  response      = '',
-                 body          = body or '', }
+                 body          = body or '',
+                 off           = 1}
 
     local headers = opts.headers or {}
 
