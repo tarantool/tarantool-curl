@@ -1,7 +1,8 @@
 #!/usr/bin/make -f
 
 DEB_CMAKE_EXTRA_FLAGS := -DCMAKE_INSTALL_LIBDIR=lib/$(DEB_HOST_MULTIARCH) \
-			-DCMAKE_BUILD_TYPE=RelWithDebInfo
+			-DCMAKE_BUILD_TYPE=RelWithDebInfo \
+			-DWITH_SYSTEM_CURL=OFF
 
 DEB_MAKE_CHECK_TARGET := #test TODO fix this
 

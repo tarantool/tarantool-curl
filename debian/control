@@ -6,9 +6,10 @@ Build-Depends: debhelper (>= 9), cdbs,
                cmake (>= 2.8),
                tarantool-dev,
                tarantool (>= 1.7.2.0),
-               libcurl4-openssl-dev,
+               libssl-dev,
                libev-dev,
-               nodejs
+               nodejs,
+               libc-ares-dev,
 Standards-Version: 3.9.6
 Homepage: https://github.com/tarantool/tarantool-curl
 Vcs-Git: git://github.com/tarantool/tarantool-curl.git
@@ -16,7 +17,7 @@ Vcs-Browser: https://github.com/tarantool/tarantool-curl
 
 Package: tarantool-curl
 Architecture: i386 amd64 armhf arm64
-Depends: tarantool (>= 1.7.2.0), ${shlibs:Depends}, ${misc:Depends}
+Depends: tarantool (>= 1.7.2.0), libssl, libc-ares2, ${shlibs:Depends}, ${misc:Depends}
 Pre-Depends: ${misc:Pre-Depends}
 Description: Curl based HTTP client for Tarantool
  This package provides a Curl based HTTP client for Tarantool.

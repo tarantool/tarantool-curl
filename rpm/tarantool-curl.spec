@@ -10,12 +10,12 @@ BuildRequires: cmake >= 2.8
 BuildRequires: gcc >= 4.5
 BuildRequires: tarantool >= 1.7.2.0
 BuildRequires: tarantool-devel
-BuildRequires: libcurl-devel
 BuildRequires: libev, libev-devel
+BuildRequires: openssl, openssl-devel
+BuildRequires: c-ares, c-ares-devel
 BuildRequires: nodejs, libuv
-BuildRequires: /usr/bin/prove
 
-Requires: tarantool >= 1.7.2, libev
+Requires: tarantool >= 1.7.2, libev, c-ares
 
 %description
 This package provides a Curl based HTTP client for Tarantool.
@@ -24,7 +24,7 @@ This package provides a Curl based HTTP client for Tarantool.
 %setup -q -n %{name}-%{version}
 
 %build
-%cmake . -DCMAKE_BUILD_TYPE=RelWithDebInfo
+%cmake . -DCMAKE_BUILD_TYPE=RelWithDebInfo -DWITH_SYSTEM_CURL=OFF
 make %{?_smp_mflags}
 make %{?_smp_mflags} test
 
