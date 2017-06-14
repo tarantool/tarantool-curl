@@ -18,5 +18,10 @@ install_manifest.txt
 *~
 .gdb_history
 *.old
+.*.sw?
 build
 node_modules
+packpack
+
+third_party/curl-out
+third_party/.curl.tmp

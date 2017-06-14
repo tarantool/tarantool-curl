@@ -403,10 +403,6 @@ request_start(request_t *r, const request_start_args_t *a)
     if (a->max_conns > 0)
         curl_easy_setopt(r->easy, CURLOPT_MAXCONNECTS, a->max_conns);
 
-#if (LIBCURL_VERSION_MAJOR >= 7 && \
-     LIBCURL_VERSION_MINOR >= 25 && \
-     LIBCURL_VERSION_PATCH >= 0 )
-
     if (a->keepalive_idle > 0 && a->keepalive_interval > 0) {
 
         curl_easy_setopt(r->easy, CURLOPT_TCP_KEEPALIVE, 1L);
@@ -425,12 +421,6 @@ request_start(request_t *r, const request_start_args_t *a)
             return CURLM_OUT_OF_MEMORY;
         }
     }
-
-#else /* > 7.25.0 */
-
-    if (a->keepalive_idle > 0 && a->keepalive_interval > 0) { }
-
-#endif
 
     if (a->read_timeout > 0)
         curl_easy_setopt(r->easy, CURLOPT_TIMEOUT_MS, a->read_timeout);
