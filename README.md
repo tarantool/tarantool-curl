@@ -5,8 +5,11 @@
     <img src="https://travis-ci.org/tarantool/curl.png?branch=master" align="right">
 </a-->
 
+# THIS MODULE IS NOT SUPPORTED
+This module has been migrated into the tarantool core that means you should use `http.client`
+
 # libcurl bindings for Tarantool
-    
+
 The `tarantool/curl` package exposes some functionality of
 [libcurl](http://https://curl.haxx.se/libcurl),
 a library for data transfer via URLs.
